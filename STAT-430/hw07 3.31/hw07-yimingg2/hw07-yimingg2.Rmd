@@ -1,0 +1,287 @@
+---
+title: "Homework 7"
+author: 'Yiming Gao (NetID: yimingg2)'
+date: "2017/3/28"
+output:
+  html_document:
+    theme: readable
+    toc: yes
+linestretch: 1.1
+---
+
+# Exercise 1
+
+For this assignment, we will use the `College` data from the `ISLR` package. Familiarize yourself with this dataset before performing analyses. We will attempt to predict the `Outstate` variable.
+
+```{r, message = FALSE, warning = FALSE}
+set.seed(42)
+library(caret)
+library(ISLR)
+index = createDataPartition(College$Outstate, p = 0.80, list = FALSE)
+college_trn = College[index, ]
+college_tst = College[-index, ]
+```
+
+Train a total of **six** models using five-fold cross validation. First I set up some helper functions for further discussion.
+
+```{r}
+uin = 650379994
+set.seed(uin)
+cv_5 = trainControl(method = "cv", number = 5) # five-fold cross validation
+
+# accuracy function
+accuracy = function(actual, predicted) {
+  mean(actual == predicted)
+}
+
+# rmse function
+rmse = function(actual, predicted) {
+  sqrt(mean((actual - predicted) ^ 2))
+}
+
+get_rmse = function(model, data, response) {
+  rmse(actual = data[, response], 
+       predicted = predict(model, data))
+}
+
+# extract the row with the best tuning parameters
+get_best_result = function(caret_fit) {
+  best_result = caret_fit$results[as.numeric(rownames(caret_fit$bestTune)), ]
+  rownames(best_result) = NULL
+  best_result
+}
+```
+
+1. An additive linear model.
+
+```{r}
+model1 = train(
+  Outstate ~ ., data = college_trn,
+  method = "lm",
+  trControl = cv_5
+)
+# cv rmse
+model1_cv_rmse = model1$results$RMSE
+
+# test rmse
+model1_tst_rmse = get_rmse(model1, data = college_tst, response = "Outstate")
+```
+
+2. An elastic net model using additive predictors. Use a `tuneLength` of `10`.
+
+```{r, message=FALSE, warning=FALSE}
+model2_search = train(
+  Outstate ~ ., data = college_trn,
+  method = "glmnet",
+  trControl = cv_5,
+  tuneLength = 10 # use a larger tuning grid, search 10 alpha values and 10 lambda valuas for each
+)
+
+# get best model
+model2 = get_best_result(model2_search)
+
+# cv rmse
+model2_cv_rmse = model2$RMSE
+
+# test rmse
+# by default, the train function chooses the model with the largest performance value (or smallest, for mean squared error in regression models
+model2_tst_rmse = get_rmse(model2_search, data = college_tst, response = "Outstate")
+```
+
+3. An elastic net model that also uses all two-way interactions. Use a `tuneLength` of `10`.
+
+```{r}
+# consider interactions
+model3_search = train(
+  Outstate ~ . ^ 2, data = college_trn,
+  method = "glmnet",
+  trControl = cv_5,
+  tuneLength = 10
+)
+
+# get best model
+model3 = get_best_result(model3_search)
+
+# cv rmse
+model3_cv_rmse = model3$RMSE
+
+# test rmse
+model3_tst_rmse = get_rmse(model3_search, data = college_tst, response = "Outstate")
+```
+
+4. A well-tuned KNN model.
+
+```{r, fig.align="center"}
+# search many k
+model4_search = train(
+  Outstate ~ ., data = college_trn,
+  method = "knn",
+  tuneGrid = expand.grid(k = seq(1, 100, by = 1)),
+  trControl = cv_5,
+  preProcess = c("center", "scale")
+)
+
+plot(model4_search)
+
+# get best k
+model4 = get_best_result(model4_search)
+
+# cv rmse
+model4_cv_rmse = model4$RMSE
+
+# test rmse
+model4_tst_rmse = get_rmse(model4_search, data = college_tst, response = "Outstate")
+```
+
+5. A well-tuned KNN model that also uses all two-way interactions. (Should this work?)
+
+```{r, message=FALSE, warning=FALSE, fig.align="center"}
+model5_search = train(
+  Outstate ~ . ^ 2, data = college_trn,
+  method = "knn",
+  tuneGrid = expand.grid(k = seq(1, 100, by = 1)),
+  trControl = cv_5,
+  preProcess = c("center", "scale")
+)
+
+plot(model5_search)
+
+# get best k
+model5 = get_best_result(model5_search)
+
+# cv rmse
+model5_cv_rmse = model5$RMSE
+
+# test rmse
+model5_tst_rmse = get_rmse(model5_search, data = college_tst, response = "Outstate")
+```
+
+6. A well-tuned GAM, trained using `method = gamSpline` with `caret`.
+
+```{r, message=FALSE, warning=FALSE, fig.align="center"}
+# GAM
+model6_search = train(
+  Outstate ~ ., data = college_trn,
+  method = "gamSpline",
+  tuneGrid = expand.grid(df = 1:10),
+  trControl = cv_5
+)
+
+plot(model6_search)
+
+# get best k
+model6 = get_best_result(model6_search)
+
+# cv rmse
+model6_cv_rmse = model6$RMSE
+
+# test rmse
+model6_tst_rmse = get_rmse(model6_search, data = college_tst, response = "Outstate")
+```
+
+We can see a U-shaped line, which means the GAM is well-tuned.
+
+```{r, echo=FALSE}
+method = c("Additive Linear Model", "Elastic net", "Elastic net with interactions", "KNN", "KNN with interactions", "GAM")
+param = c("NA", "`alpha`", "`alpha`", "`k`", "`k`", "`df`")
+param_value = c("NA", model2$alpha, model3$alpha, model4$k, model5$k, model6$df)
+cv_rmse = c(model1_cv_rmse, model2_cv_rmse, model3_cv_rmse, model4_cv_rmse, model5_cv_rmse, model6_cv_rmse)
+tst_rmse = c(model1_tst_rmse, model2_tst_rmse, model3_tst_rmse, model4_tst_rmse, model5_tst_rmse, model6_tst_rmse)
+
+results1 = data.frame(method, param, param_value, cv_rmse, tst_rmse)
+colnames(results1) = c("Method", "Parameter", "Parameter Value", "CV RMSE", "Test RMSE")
+knitr::kable(results1, align = "c")
+```
+
+
+Also answer the following:
+
+* Create a table which reports CV and Test RMSE for each.
+    - See above.
+  
+* Based on the table, which model do you prefer? Justify your answer.
+    - I prefer the third model, i.e., the elastic net model using all two-way interactions with parameters $\alpha$ = `r model3$alpha` and $\lambda$ = `r round(model3$lambda, 3)`.
+
+* For both of the elastic net models, report the best tuning parameters from `caret`. For each, is this ridge, lasso, or somewhere in between? If in between, closer to which?
+    - The best tuning parameter for elastic net model using additive predictors is $\alpha$ = `r model2$alpha`. Since $\alpha$ is neither 0 nor 1 but closer to 0, it is closer to **ridge**.
+    - The best tuning parameter for elastic net model that also uses all two-way interactions is $\alpha$ = `r model3$alpha`. Since $\alpha$ is neither 0 nor 1 but closer to 0, it is closer to **ridge**.
+
+* Did you scale the predictors when you used KNN? Should you have scaled the predictors when you used KNN?
+    - I **scaled** the predictors to have 0 mean and unit variance when using KNN. In this particular case, I should have scaled them because variables are in different units or range, which may cause one variable dominate other variables in the distance measurements.
+
+* Of the two KNN models which works better? Can you explain why?
+    - They both give similar k, CV RMSE and Test RMSE. But in terms of simplicity, we may want a simpler model that is KNN without interactions.
+
+* For both of the KNN models, plot the CV results against the tuning parameters. Does this plot verify that you used an appropriate tuning grid?
+    - See above. We see that in both plots, the RMSE fall then rise, which indicates that we have checked a sufficient number of tuning parameters. 
+
+* For the GAM, plot the CV results against the tuning parameters. Does this plot verify that you used an appropriate tuning grid?
+    - See above. We see the RMSE fall then rise, which indicates that we have checked a sufficient number of tuning parameters.
+
+* What was the best tuning parameter for the GAMs? Does this suggest non-linearity?
+    - The best tuning parameter for GAMs is degree of freedom = `r model6$df`. GAM allows for flexible nonlinearities in several variables, but still retains the additive structure of linear models. So it does **NOT** imply non-linearity.
+
+```{r}
+College["University of Illinois - Urbana", ]$Outstate
+```
+
++ What year is this dataset from? What was out-of-state tuition at UIUC at that time?   
+    - Using `help()` function in R, we know this `College` dataset comes from 1995. The out-of-state tuition at UIUC at that time was `r College["University of Illinois - Urbana", ]$Outstate`.
+
+# Exercise 2
+
+Use `Private` as the response variable. Fit Regularized Discriminant Analysis trained using five-fold cross-validation and a tuning length of `5` with `train()`.
+
+```{r}
+library(ggplot2)
+set.seed(42)
+cv_5 = trainControl(method = "cv", number = 5)
+# make sure the response is factor
+is.factor(college_trn$Private)
+```
+
+First we verify that `Private` is a factor variable. Then we create RDA with grid search.
+
+```{r, fig.align="center", message=FALSE, warning=FALSE}
+# fit rda model
+rda_search = train(
+  Private ~ ., data = college_trn,
+  method = "rda",
+  trControl = cv_5,
+  tuneLength = 5
+)
+
+ggplot(rda_search)
+
+# find the best tuning parameters
+rda = get_best_result(rda_search)
+```
+
+We can clearly identify that the pink line with $\gamma=0$ and $\lambda=1$ has the highest cross-validated accuracy. Then we calculate its test accuracy.
+
+```{r}
+paste("gamma =", rda$gamma, ", lambda =", rda$lambda)
+
+# CV-Accuracy
+rda_cv_acc = rda$Accuracy
+
+# test accuracy
+rda_tst_acc = accuracy(actual = college_tst$Private, predicted = predict(rda_search, newdata = college_tst))
+
+round(c(rda_cv_acc, rda_tst_acc), 3)
+```
+
+The best tuning parameters are $\gamma$ = `r rda$gamma` and $\lambda$ = `r rda$lambda`. The cross-validated accuracy is `r round(rda$Accuracy, 4)`. We know that when $\gamma=0, \lambda=1$, it is **LDA** which uses a common covariance matrix. The test accuracy is `r round(rda_tst_acc, 4)`. The cross-validated and test accuracy are both high and there is not too much difference, which means our model predicts well in this case.
+
+
+
+
+
+
+
+
+
+
+
+
+

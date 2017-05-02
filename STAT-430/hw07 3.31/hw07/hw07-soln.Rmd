@@ -1,0 +1,230 @@
+---
+title: "Homework 7"
+author: "STAT 430, Spring 2017"
+date: 'Due: Friday, March 31 by 11:59 PM'
+output:
+  html_document: default
+  pdf_document: default
+---
+
+# Exercise 1
+
+**[25 points]** For this assignment, we will use the `College` data from the `ISLR` package. Familiarize yourself with this dataset before performing analyses. We will attempt to predict the `Outstate` variable.
+
+Test-train split the data using this code.
+
+```{r, message = FALSE, warning = FALSE}
+set.seed(42)
+library(caret)
+library(ISLR)
+index = createDataPartition(College$Outstate, p = 0.80, list = FALSE)
+college_trn = College[index, ]
+college_tst = College[-index, ]
+```
+
+Train a total of **six** models using five-fold cross validation.
+
+- An additive linear model.
+- An elastic net model using additive predictors. Use a `tuneLength` of `10`.
+- An elastic net model that also uses all two-way interactions. Use a `tuneLength` of `10`.
+- A well-tuned KNN model.
+- A well-tuned KNN model that also uses all two-way interactions. (Should this work?)
+- A well-tuned GAM, trained using `method = gamSpline` with `caret`.
+
+Before training the models, set a seed equal to your UIN.
+
+```{r}
+uin = 123456789
+set.seed(uin)
+```
+
+Also answer the following:
+
+- Create a table which reports CV and Test RMSE for each.
+- Based on the table, which model do you prefer? Justify your answer.
+- For both of the elastic net models, report the best tuning parameters from `caret`. For each, is this ridge, lasso, or somewhere in between? If in between, closer to which?
+- Did you scale the predictors when you used KNN? Should you have scaled the predictors when you used KNN?
+- Of the two KNN models which works better? Can you explain why?
+- For both of the KNN models, plot the CV results against the tuning parameters. Does this plot verify that you used an appropriate tuning grid?
+- For the GAM, plot the CV results against the tuning parameters. Does this plot verify that you used an appropriate tuning grid?
+- What was the best tuning parameter for the GAMs? Does this suggest non-linearity?
+- What year is this dataset from? What was out-of-state tuition at UIUC at that time?
+
+**Solution:**
+
+Note that some code, for plotting and summarizing, is hidden. See the .Rmd file for code.
+
+```{r, message = FALSE, warning = FALSE, solution = TRUE}
+library(glmnet)
+library(gam)
+```
+
+```{r, solution = TRUE, echo = FALSE}
+theme1 <- trellis.par.get()
+theme1$plot.symbol$col = rgb(.2, .2, .2, .4)
+theme1$plot.symbol$pch = 16
+theme1$plot.line$col = rgb(1, 0, 0, .7)
+theme1$plot.line$lwd <- 2
+trellis.par.set(theme1)
+featurePlot(x = college_trn[c("Expend", "S.F.Ratio", "Terminal", "PhD", "Personal", "Books")],
+            y = college_trn$Outstate,
+            plot = "scatter",
+            type = c("p", "smooth"),
+            span = .5)
+```
+
+```{r, solution = TRUE}
+rmse = function(actual, predicted) {
+  sqrt(mean((actual - predicted) ^ 2))
+}
+```
+
+```{r, solution = TRUE}
+cv_5 = trainControl(method = "cv", number = 5)
+```
+
+```{r, solution = TRUE}
+set.seed(uin)
+fit_lm         = train(Outstate ~ ., data = college_trn, method = "lm", 
+                       trControl = cv_5)
+fit_glmnet     = train(Outstate ~ ., data = college_trn, method = "glmnet", 
+                       trControl = cv_5, tuneLength = 10)
+fit_glmnet_int = train(Outstate ~ . ^ 2, data = college_trn, method = "glmnet", 
+                       trControl = cv_5, tuneLength = 10)
+fit_knn        = train(Outstate ~ ., data = college_trn, method = "knn", 
+                       trControl = cv_5, tuneLength = 25, preProcess = c("center", "scale"))
+fit_knn_int    = train(Outstate ~ . ^ 2, data = college_trn, method = "knn", 
+                       trControl = cv_5, tuneLength = 25, preProcess = c("center", "scale"))
+fit_gam        = train(Outstate ~ ., data = college_trn, method = "gamSpline", 
+                       trControl = cv_5, tuneGrid = expand.grid(df = 1:5))
+```
+
+```{r, solution = TRUE}
+get_best_result = function(caret_fit) {
+  best_result = caret_fit$results[as.numeric(rownames(caret_fit$bestTune)), ]
+  rownames(best_result) = NULL
+  best_result
+}
+```
+
+```{r, solution = TRUE, echo = FALSE}
+models = c("Linear Model", "Elastic Net", "Elastic Net with Interactions", "KNN", "KNN with Interactions", "GAM")
+
+cv_rmse = c(
+  get_best_result(fit_lm)$RMSE,
+  get_best_result(fit_glmnet)$RMSE,
+  get_best_result(fit_glmnet_int)$RMSE,
+  get_best_result(fit_knn)$RMSE,
+  get_best_result(fit_knn_int)$RMSE,
+  get_best_result(fit_gam)$RMSE
+)
+
+test_rmse = c(
+  rmse(predicted = predict(fit_lm, college_tst), actual = college_tst$Outstate),
+  rmse(predicted = predict(fit_glmnet, college_tst), actual = college_tst$Outstate),
+  rmse(predicted = predict(fit_glmnet_int, college_tst), actual = college_tst$Outstate),
+  rmse(predicted = predict(fit_knn, college_tst), actual = college_tst$Outstate),
+  rmse(predicted = predict(fit_knn_int, college_tst), actual = college_tst$Outstate),
+  rmse(predicted = predict(fit_gam, college_tst), actual = college_tst$Outstate)
+)
+
+class_results = data.frame(models, cv_rmse, test_rmse)
+colnames(class_results) = c("Method", "CV RMSE", "Test RMSE")
+knitr::kable(class_results)
+```
+
+- Standard Deviation of CV-RMSE for the "Best" Model:
+
+```{r, solution = TRUE}
+get_best_result(fit_glmnet_int)$RMSESD
+```
+
+- Tuning parameters for `glmnet` models:
+
+```{r, solution = TRUE}
+fit_glmnet$bestTune
+fit_glmnet_int$bestTune
+```
+
+- Justification of scaled KNN:
+
+```{r, solution = TRUE}
+fit_knn_unscaled = train(Outstate ~ ., data = college_trn, method = "knn", 
+                         trControl = cv_5, tuneLength = 25)
+get_best_result(fit_knn_unscaled)$RMSE
+```
+
+- KNN plots:
+
+```{r, solution = TRUE}
+plot(fit_knn)
+plot(fit_knn_int)
+```
+
+- GAM plots:
+
+```{r, solution = TRUE}
+plot(fit_gam)
+```
+
+- Tuning parameters for `gam` models:
+
+```{r, solution = TRUE}
+fit_gam$bestTune
+```
+
+Answering the questions:
+
+- Create a table which reports CV and Test RMSE for each.
+    - See above.
+- Based on the table, which model do you prefer? Justify your answer.
+    - The elastic-net with all interactions appears to perform the best since it obtains the lowest CV-RMSE as well as test RMSE.
+- For both of the elastic net models, report the best tuning parameters from `caret`. For each, is this ridge, lasso, or somewhere in between? If in between, closer to which?
+    - Seen above, they both use an $\alpha$ of 0.1 which is between lasso and ridge, but closer to ridge.
+- Did you scale the predictors when you used KNN? Should you have scaled the predictors when you used KNN?
+    - Yes! Notice the unscaled results are worse.
+- Of the two KNN models which works better? Can you explain why?
+    - The model without the interactions. This is probably a result of the curse of dimensionality.
+- For both of the KNN models, plot the CV results against the tuning parameters. Does this plot verify that you used an appropriate tuning grid?
+    - Notice that both form the expected U-shape.
+- For the GAM, plot the CV results against the tuning parameters. Does this plot verify that you used an appropriate tuning grid?
+    - Notice that this plot forms the expected U-shape.
+- What was the best tuning parameter for the GAMs? Does this suggest non-linearity?
+    - 2. Yes! This suggests non-linearity.
+- What year is this dataset from? What was out-of-state tuition at UIUC at that time?
+    - 1995! $`r College[624, "Outstate"]`. We're not sure if this is semester or year, but either way, wow!
+
+
+
+
+
+
+
+
+
+
+# Exercise 2
+
+**[5 points]** Continue using the `College` data. Now use `Private` as the response variable. Fit Regularized Discriminant Analysis trained using five-fold cross-validation and a tuning length of `5` with `train()`. Use the seed below.
+
+```{r}
+set.seed(42)
+```
+
+Report the tuning parameters and CV-Accuracy of the chosen model. Is this LDA, QDA, or something else? Also report test accuracy
+
+```{r, solution = TRUE}
+fit_rda = train(Private ~ ., data = college_trn, method = "rda", trControl = cv_5, tuneLength = 5)
+```
+
+```{r, solution = TRUE}
+get_best_result(fit_rda)
+```
+
+```{r, solution = TRUE}
+# test accuracy
+mean(predict(fit_rda, college_tst) == college_tst$Private)
+```
+
+Based on these results, we see that this is LDA since $\gamma$ = 0 and $\lambda$ = 1.
+

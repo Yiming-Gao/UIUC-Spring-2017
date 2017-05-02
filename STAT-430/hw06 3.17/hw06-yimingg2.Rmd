@@ -1,0 +1,296 @@
+---
+title: "Homework 6"
+author: 'Yiming Gao (NetID: yimingg2)'
+date: "2017/3/17"
+output:
+  html_document:
+    theme: readable
+    toc: yes
+linestretch: 1.2
+---
+# Exercise 1
+
+Do the following:
+
+- Set a seed value equal to your UIN
+- Test-train split the data using approximately 50% of the data for training.
+
+- Report 5 fold cross-validated, train, and test accuracy for each of the three models
+    - You should arrange this in a table
+    - **You do not need to cross-validate the selection method, but rather only cross-validate the resulting model**
+
+```{r, message=FALSE, warning=FALSE}
+# create data
+library(readr)
+library(class)
+library(MASS)
+library(ggplot2)
+library(caret)
+library(leaps)
+
+data = read_csv("hw06-data.csv")
+uin = 650379994
+set.seed(uin)
+# train-test split
+train_index = createDataPartition(data$y, p = 0.5, list = FALSE)
+train_data = data[train_index, ]
+test_data = data[-train_index, ]
+```
+
+- Fit three models:
+    - Additive logistic regression
+    - Logistic regression with predictors chosen using a variable selection technique of your choice
+    - $k$-nearest neighbors using a well tuned value of $k$
+
+## Additive Logistic Regression
+
+```{r}
+# Some functions
+accuracy <- function(actual, predicted) {
+  mean(actual == predicted)
+}
+
+get_pred = function(mod, data, res = "y", pos = 1, neg = 0, cut = 0.5) {
+  probs = predict(mod, newdata = data, type = "response")
+  ifelse(probs > cut, pos, neg)
+}
+
+# convert response to factor
+train_data$y = factor(train_data$y)
+test_data$y = factor(test_data$y)
+
+# additive logistic regression
+add = train(
+  form = y ~ ., data = train_data, method = "glm", family = "binomial",
+  trControl = trainControl(method = "cv", number = 5)
+)
+
+# train acc
+add_train_acc = accuracy(actual = train_data$y, 
+                         predicted = predict(add, newdata = train_data))
+# test acc
+add_test_acc = accuracy(actual = test_data$y, 
+                        predicted = predict(add, newdata = test_data))
+```
+
+## Reduced Logistic Regression
+
+I use `step` function in `leaps` package to perform stepwise variable selection.
+
+```{r}
+# variable selection
+add1 = glm(y~., data = train_data, family = "binomial")
+step = step(add1, trace = 0)
+# coefficients and AIC value
+step$coefficients
+step$aic
+```
+The stepwise variable selection gives five predictors: x01, x02, x04, x06 and x07, with $AIC=713.774$. Then we calculate the corresponding 5 fold cross-validated, train and test accuracy.
+
+```{r}
+reduced = train(
+  form = y ~ x01 + x02 + x04 + x06 + x07, data = train_data, method = "glm", family = "binomial", trControl = trainControl(method = "cv", number = 5))
+
+# train acc
+reduced_train_acc = accuracy(actual = train_data$y, predicted = predict(reduced, newdata = train_data))
+# test acc
+reduced_test_acc = accuracy(actual = test_data$y, predicted = predict(reduced, newdata = test_data))
+
+c(reduced_train_acc, reduced_test_acc)
+```
+
+## K-nearest neighbors
+
+First we tune $k$ from 1 to 501 by 5. It may take 10 seconds to run the code.
+
+```{r, fig.align="center", fig.width=12, message=FALSE, warning=FALSE}
+knn = train(y ~ ., data = train_data, method = "knn",
+  trControl = trainControl(method = "cv", number = 5),
+  preProcess = c("center", "scale"),
+  tuneGrid = expand.grid(k = seq(1, 501, by = 5)))
+
+best_k = knn$bestTune$k
+
+# plot the model
+ggplot(knn) + theme_bw() + geom_vline(xintercept = best_k, colour = "dodgerblue2", size = 0.6, linetype = "longdash") + annotate("text", x = best_k + 20, y = 0.825, label = paste("k = ", best_k), cex = 4.5)
+```
+
+From the plot, we can notice that after reaching the highest cross-validation accuracy after best k, the accuracy has a slow decreasing trend as number of neighbors grows to 500, which demonstrates that we've considered enough values of k.
+
+Then we tune k from 1 to 100 by 1, and compute the 5 fold cross-validated, train and test accuracy corresponding to `best_k`.
+
+```{r}
+knn = train(y ~ ., data = train_data, method = "knn",
+  trControl = trainControl(method = "cv", number = 5),
+  preProcess = c("center", "scale"),
+  tuneGrid = expand.grid(k = seq(1, 100, by = 1)))
+
+best_k = knn$bestTune$k
+
+# train accuracy
+knn_train_acc = accuracy(actual = train_data$y, predicted = predict(knn, newdata = train_data))
+
+# test accuracy
+knn_test_acc = accuracy(actual = test_data$y, predicted = predict(knn, newdata = test_data))
+```
+
+We summarize the results into following table:
+
+|           Model             | Train accuracy       | Test accuracy       |
+|:---------------------------:|:--------------------:|:-------------------:|
+| Additive Logistic Regression| `r add_train_acc`    | `r add_test_acc`    |
+| Reduced Logistic Regression | `r reduced_train_acc`| `r reduced_test_acc`|
+| k-nearest neighbors (k = `r best_k`)| `r knn_train_acc` | `r knn_test_acc` |
+
+- What is the model you chose via selection?
+
+Based on AIC criterion, the reduced model via selection is `y ~ x01 + x02 + x04 + x06 + x07`.
+
+- Plot the cross-validated $k$-nearest neighbor results. Argue that this plot verifies that you have considered enough values of $k$.
+
+From the plot, we can notice that after reaching the highest cross-validation accuracy after best k, the accuracy has a slow decreasing trend as number of neighbors grows to 500, which demonstrates that we've considered enough values of k.
+
+- What value of $k$ did you select?
+
+I select k = `r best_k`.
+
+- Based on these results, which model do you prefer?
+
+I prefer **reduced logistic model**. Beacuse it gives similar train and test accuracy as additive logistic model, of which there is no overfitting problem. And it only contains 5 predictors, which is much simpler than the additive one.
+
+# Exercise 2
+
+We first read in the data and do some transformations.
+
+```{r, message = FALSE, warning = FALSE}
+library(readr)
+leukemia = read_csv("leukemia.csv", progress = FALSE) 
+# large dataset, remember to use 5-fold cross-validation
+```
+
+```{r, message=FALSE, warning=FALSE}
+library(glmnet)
+y = as.factor(leukemia$class)
+X = as.matrix(leukemia[, -1])
+```
+
+- Fit an logistic regression with a lasso penalty without using cross-validation.
+
+```{r, fig.align="center", message=FALSE, warning=FALSE}
+library(ggplot2)
+library(RColorBrewer)
+fit_lasso = glmnet(X, y, alpha = 1, family = "binomial") # logistic with lasso
+plot(fit_lasso, xvar = "lambda", label = TRUE, col = brewer.pal(19, "Accent"), lwd = 1.2)
+grid()
+```
+
+- Use cross-validation to tune an logistic regression with a lasso penalty. 
+
+Since `cv.glmnet()` doesn't calculate prediction accuracy for classification, we take the $lambda$ values and create a grid to search in order to obtain prediction accuracy.
+
+```{r, fig.align="center"}
+fit_lasso_cv = cv.glmnet(X, y, alpha = 1, family = "binomial")
+lasso_min = fit_lasso_cv$lambda.min
+lasso_1se = fit_lasso_cv$lambda.1se
+plot(fit_lasso_cv)
+grid()
+
+# train() function in caret package
+cv_5 = trainControl(method = "cv", number = 5)
+lasso_grid = expand.grid(alpha = 1, lambda = c(lasso_min, lasso_1se))
+
+fit_lasso = train(
+  x = X,
+  y = y,
+  method = "glmnet",
+  trControl = cv_5,
+  tuneGrid = lasso_grid
+)
+
+lasso_acc = round(fit_lasso$results$Accuracy, 4)
+lasso_acc_sd = round(fit_lasso$results$AccuracySD, 4)
+lasso_acc
+```
+
+- Fit an logistic regression with ridge penalty without using cross-validation.
+
+```{r, fig.align="center", message=FALSE, warning=FALSE}
+fit_ridge = glmnet(X, y, alpha = 0, family = "binomial") # logistic with ridge
+plot(fit_ridge, xvar = "lambda", label = TRUE, col = brewer.pal(19, "Accent"))
+grid()
+```
+
+- Use cross-validation to tune an logistic regression with a ridge penalty. 
+
+```{r, fig.align="center"}
+fit_ridge_cv = cv.glmnet(X, y, alpha = 0, family = "binomial")
+ridge_min = fit_ridge_cv$lambda.min
+ridge_1se = fit_ridge_cv$lambda.1se
+plot(fit_ridge_cv)
+grid()
+
+# train() function in caret package
+cv_5 = trainControl(method = "cv", number = 5)
+ridge_grid = expand.grid(alpha = 0, lambda = c(ridge_min, ridge_1se))
+
+fit_ridge = train(
+  x = X,
+  y = y,
+  method = "glmnet",
+  trControl = cv_5,
+  tuneGrid = ridge_grid
+)
+
+ridge_acc = round(fit_ridge$results$Accuracy, 4)
+ridge_acc_sd = round(fit_ridge$results$AccuracySD, 4)
+ridge_acc
+```
+
+- Use cross-validation to tune $k$-nearest neighbors using `train()` in `caret`. 
+
+```{r}
+fit_knn = train(
+  class ~ .,
+  data = leukemia,
+  method = "knn",
+  trControl = cv_5
+)
+
+knn_acc = round(fit_knn$results[c("k", "Accuracy")], 4)
+knn_acc_sd = round(fit_knn$results[c("k", "AccuracySD")], 4)
+knn_acc
+```
+
+```{r}
+# q1
+nrow = nrow(leukemia) # 72
+ncol = ncol(leukemia) # 5148
+```
+
+- How many observations are in the dataset? How many predictors are in the dataset?
+
+There are 72 observations and 5148 predictors in the dataset.
+
+- Based on the deviance plot, do you feel that `glmnet` considered enough $\lambda$ values for lasso? For ridge?
+
+Not enough, only 5 $\lambda$'s.
+
+- How does $k$-nearest neighbor compare to the penalized methods? Can you explain any difference?
+
+KNN is a **non-parametric** method used for classification and regression that in order to determine the classification of a point, combines the classification of the k nearest points. However, both lasso and ridge are **parametric** methods which are good at handling multicollinearity, i.e., a predictor matrix with rank less than the number of its columns.
+
+- Summarize these **seven** models in a table. (Two lasso, two ridge, three knn.) For each report the cross-validated accuracy and the standard deviation of the accuracy.
+
+| Model    | Cross-validated accuracy| Std of accuracy |
+|:--------:|:-----:|:------------------------:|
+| Lasso with `lambda.min`| `r lasso_acc[1]`| `r lasso_acc_sd[1]` |
+| Lasso with `lambda.1se`| `r lasso_acc[2]`| `r lasso_acc_sd[2]` |
+| Ridge with `lambda.min`| `r ridge_acc[1]`| `r ridge_acc_sd[1]` |
+| Ridge with `lambda.1se`| `r ridge_acc[2]`| `r ridge_acc_sd[2]` |
+| 5-nearest neighbors| `r knn_acc[1, 2]`| `r knn_acc_sd[1, 2]` |
+| 7-nearest neighbors| `r knn_acc[2, 2]`| `r knn_acc_sd[2, 2]` |
+| 9-nearest neighbors| `r knn_acc[3, 2]`| `r knn_acc_sd[3, 2]` |
+
+- Based on your results, which model would you choose?
+
+I will select **ridge regression** model with either $\lambda$ that minimizes the deviance or the $\lambda$ that has a deviance within one standard error. Both models give high cross-validated accuracy `r ridge_acc[1]` and lowest standard deviation of the accuracy `r ridge_acc_sd[1]`. It is reasonable because ridge regression model predicts better when we have many highly correlated predictors as in this case.

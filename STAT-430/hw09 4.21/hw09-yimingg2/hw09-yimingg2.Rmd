@@ -1,0 +1,142 @@
+---
+title: "Homework 9"
+author: 'Yiming Gao (NetID: yimingg2)'
+date: "2017/4/7"
+output:
+  html_document:
+    theme: readable
+    toc: yes
+linestretch: 1.1
+---
+
+## Classification
+
+First we read in the data and set up some helper functions.
+
+```{r, message=FALSE, warning=FALSE}
+library(caret)
+library(ISLR)
+library(autograde)
+class_trn = read.csv("hw09-class-train.csv")
+class_tst_X = read.csv("hw09-class-test-X.csv")
+```
+
+```{r}
+# accuracy function
+accuracy <- function(actual, predicted) {
+  mean(actual == predicted)
+}
+
+# rmse function
+rmse = function(actual, predicted) {
+  sqrt(mean((actual - predicted) ^ 2))
+}
+
+get_rmse = function(model, data, response) {
+  rmse(actual = data[, response], 
+       predicted = predict(model, data))
+}
+
+# extract the row with the best tuning parameters
+get_best_result = function(caret_fit) {
+  best_result = caret_fit$results[as.numeric(rownames(caret_fit$bestTune)), ]
+  rownames(best_result) = NULL
+  best_result
+}
+```
+
+### Additive logistic regression (required)
+
+```{r, message=FALSE, warning=FALSE}
+set.seed(27)
+add_logis = train(y ~ ., data = class_trn, method = "glm", family = "binomial")
+
+add_logis_pred = predict(add_logis, newdata = class_tst_X)
+
+add_trn_acc = accuracy(actual = class_trn$y, predicted = predict(add_logis, class_trn))
+
+# write to a file
+#gen_agfile(add_logis_pred, file.name = "add_logis_pred")
+```
+
+The train and test accuracy for the additive logistic regression are `r add_trn_acc` and 0.545 (from the autograder).
+
+### My best model
+
+- gamboost
+
+I didn't set seed for the submission, so there may be a little difference for test accuracy here.
+
+```{r, message=FALSE, warning=FALSE}
+gamboost_control = trainControl(method = "cv", number = 5)
+gamboost_grid = expand.grid(mstop = seq(100, 500, 100), prune = TRUE)
+
+# classification submission 7
+gamboost = train(y ~., data = class_trn, 
+                 trControl = gamboost_control, 
+                 method = "gamboost",
+                 tuneGrid = gamboost_grid,
+                 preProc = c("center", "scale"))
+
+gamboost_pred = predict(gamboost, newdata = class_tst_X)
+
+gamboost_trn_acc = accuracy(actual = class_trn$y, predicted = predict(gamboost, class_trn))
+
+gamboost_best = get_best_result(gamboost)
+# write to a file
+#gen_agfile(gamboost_pred, file.name = "gamboost_pred_submission7")
+```
+
+I use **Boosted Generalized Additive Model** to get the best results. The train and test accuracy for the this model are `r gamboost_trn_acc` and 0.7964 (from the autograder). There are two tuning parameters `mstop`, the number of boosting iterations and `prune`, whether AIC prune or not. Here we need `r gamboost_best$mstop` iterations with AIC pruning.
+
+
+## Regression
+
+```{r, message=FALSE, warning=FALSE}
+reg_trn = read.csv("hw09-reg-train.csv")
+reg_tst_X = read.csv("hw09-reg-test-X.csv")
+```
+
+### Additive linear model (required)
+
+```{r, message=FALSE, warning=FALSE}
+add_lin = train(y ~ ., data = reg_trn, method = "lm")
+
+add_lin_pred = predict(add_lin, newdata = reg_tst_X)
+
+add_trn_rmse = get_rmse(add_lin, reg_trn, "y")
+
+# write to a file
+#gen_agfile(add_logis_pred, file.name = "add_logis_pred")
+```
+
+The train and test RMSE for the additive linear model are `r round(add_trn_rmse, 4)` and 1.8408 (from the autograder).
+
+### My best model
+
+- earth
+
+```{r, message=FALSE, warning=FALSE}
+earth_grid = data.frame(.degree = 1:2, .nprune = 1:20)
+earth_control = trainControl(method = "cv", number = 5)
+
+# regression submission5
+earth = train(reg_trn[, -1], reg_trn$y,
+              method = "earth",
+              trControl = earth_control,
+              tuneGrid = earth_grid,
+              preProc = c("center", "scale"))
+
+earth_trn_rmse = get_rmse(earth, reg_trn, "y")
+
+earth_reg_pred = predict(earth, newdata = reg_tst_X)
+
+earth_best = get_best_result(earth)
+
+# write to a file
+#gen_agfile(earth_reg_pred, file.name = "reg_earth_pred5")
+```
+
+I use **Multivariate Adaptive Regression Spline** to get the best results. The train and test RMSE for the this model are `r round(earth_trn_rmse, 4)` and 1.5074 (from the autograder). There are two tuning parameters `nprune`, the number of terms and `degree`, the product degree. Here we have `r earth_best$nprune` for `nprune` and `r earth_best$degree` for `degree`.
+
+

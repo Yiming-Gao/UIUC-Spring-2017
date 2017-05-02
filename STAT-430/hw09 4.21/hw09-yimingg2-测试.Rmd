@@ -1,0 +1,352 @@
+---
+title: "Homework 9"
+author: 'Yiming Gao (NetID: yimingg2)'
+date: "2017/4/7"
+output:
+  html_document:
+    theme: readable
+    toc: yes
+linestretch: 1.1
+---
+
+Some reference: http://machinelearningmastery.com/machine-learning-ensembles-with-r/, https://www.analyticsvidhya.com/blog/2017/02/introduction-to-ensembling-along-with-implementation-in-r/
+
+# Classification
+
+First we read in the data and set up some helper functions.
+
+```{r, message=FALSE, warning=FALSE}
+library(caret)
+library(ISLR)
+library(autograde)
+class_trn = read.csv("hw09-class-train.csv")
+class_tst_X = read.csv("hw09-class-test-X.csv")
+
+# my training test split
+index = createDataPartition(class_trn$y, p = 0.7, list = FALSE)
+mydata_class_trn = class_trn[index, ]
+mydata_class_tst = class_trn[-index, ]
+```
+
+```{r}
+# accuracy function
+accuracy <- function(actual, predicted) {
+  mean(actual == predicted)
+}
+
+# rmse function
+rmse = function(actual, predicted) {
+  sqrt(mean((actual - predicted) ^ 2))
+}
+
+get_rmse = function(model, data, response) {
+  rmse(actual = data[, response], 
+       predicted = predict(model, data))
+}
+
+# extract the row with the best tuning parameters
+get_best_result = function(caret_fit) {
+  best_result = caret_fit$results[as.numeric(rownames(caret_fit$bestTune)), ]
+  rownames(best_result) = NULL
+  best_result
+}
+```
+
+## Additive logistic regression (required)
+
+```{r, message=FALSE, warning=FALSE}
+add_logis = train(y ~ ., data = class_trn, method = "glm", family = "binomial")
+
+add_logis_pred = predict(add_logis, newdata = class_tst_X)
+
+# write to a file
+gen_agfile(add_logis_pred, file.name = "add_logis_pred")
+```
+
+
+## My best model
+
+- Random Forest, cv
+
+```{r, message=FALSE, warning=FALSE}
+rf_control = trainControl(method = "cv", number = 5)
+rf_grid = expand.grid(mtry = 1: 10)
+rf_cv = train(y ~ ., data = mydata_class_trn, method = "rf",
+               trControl = rf_control, tuneGrid = rf_grid)
+
+# test accuracy
+accuracy(mydata_class_tst$y, predict(rf_cv, mydata_class_tst))
+# 0.8227
+```
+
+- gbm
+
+```{r, message=FALSE, warning=FALSE}
+gbm_control = trainControl(method = "cv", number = 5)
+gbm_grid = expand.grid(interaction.depth = c(1, 2, 3),
+                       n.trees = c(500, 1000, 1500),
+                       shrinkage = c(0.001, 0.01, 0.1),
+                       n.minobsinnode = 10)
+
+# boosted tree model
+gbm_cv = train(y ~ ., data = mydata_class_trn,
+               method = "gbm",
+               trControl = gbm_control,
+               verbose = FALSE,
+               tuneGrid = gbm_grid)
+
+# test accuracy
+accuracy(actual = mydata_class_tst$y, predicted = predict(gbm_cv, mydata_class_tst))
+```
+
+- ada
+
+```{r}
+ada_control = trainControl(method = "cv", number = 5)
+# ada_grid = expand.grid(interaction.depth = c(1, 2, 3),
+#                        n.trees = c(500, 1000, 1500),
+#                        shrinkage = c(0.001, 0.01, 0.1),
+#                        n.minobsinnode = 10)
+
+# boosted tree model
+ada = train(y ~ ., data = mydata_class_trn,
+            method = "ada",
+            trControl = ada_control,
+            verbose = FALSE)
+
+# test accuracy
+accuracy(actual = mydata_class_tst$y, predicted = predict(ada, mydata_class_tst))
+```
+
+- gamboost
+
+```{r, message=FALSE, warning=FALSE}
+gamboost_control = trainControl(method = "cv", number = 5)
+gamboost_grid = expand.grid(mstop = c(100, 200, 300),
+                            prune = TRUE)
+
+# boosted tree model
+gamboost = train(y ~ ., data = mydata_class_trn,
+            method = "gamboost",
+            trControl = gamboost_control,
+            tuneGrid = gamboost_grid,
+            preProc = c("center", "scale"))
+
+# test accuracy
+accuracy(actual = mydata_class_tst$y, predicted = predict(gamboost, mydata_class_tst))
+```
+
+- gamSpline
+
+```{r, warning=FALSE}
+gamSpline_control = trainControl(method = "cv", number = 5)
+gamSpline_grid = expand.grid(df = c(1:5))
+
+# boosted tree model
+gamSpline = train(y ~ ., data = mydata_class_trn,
+            method = "gamSpline",
+            trControl = gamSpline_control,
+            tuneGrid = gamSpline_grid,
+            preProc = c("center", "scale"))
+
+# test accuracy
+accuracy(actual = mydata_class_tst$y, predicted = predict(gamSpline, mydata_class_tst))
+```
+
+- gamLoess
+
+```{r, message=FALSE, warning=FALSE}
+gamLoess_control = trainControl(method = "cv", number = 5)
+gamLoess_grid = expand.grid(span = 0.1,
+                            degree = 1:3)
+
+# boosted tree model
+gamLoess = train(y ~ ., data = mydata_class_trn,
+            method = "gamLoess",
+            trControl = gamLoess_control,
+            tuneGrid = gamLoess_grid,
+            preProc = c("center", "scale"))
+
+# test accuracy
+accuracy(actual = mydata_class_tst$y, predicted = predict(gamLoess, mydata_class_tst))
+```
+
+- stepQDA
+
+```{r, message=FALSE, warning=FALSE}
+stepQDA_control = trainControl(method = "cv", number = 5)
+#StepQDA_grid = expand.grid(span = 0.5, degree = 1:3)
+
+# boosted tree model
+stepQDA = train(y ~ ., data = mydata_class_trn,
+            method = "stepQDA",
+            trControl = stepQDA_control,
+            #tuneGrid = stepQDA_grid,
+            preProc = c("center", "scale"))
+
+# test accuracy
+accuracy(actual = mydata_class_tst$y, predicted = predict(stepQDA, mydata_class_tst))
+```
+
+
+
+- Stacking
+
+  - Linear Discriminate Analysis (LDA)
+  - Classification and Regression Trees (CART)
+  - Logistic Regression (via Generalized Linear Model or GLM)
+  - k-Nearest Neighbors (kNN)
+  - Support Vector Machine with a Radial Basis Kernel Function (SVM)
+
+Below is an example that creates 5 sub-models. Note the new helpful `caretList` function provided by the `caretEnsemble` package for creating a list of standard caret models.
+
+```{r, message=FALSE, warning=FALSE}
+stack_control = trainControl(method = "cv", number = 3)
+modelList = c("nb", "rf", "ada", "gamboost", "gamSpline", "gamLoess", "stepQDA")
+
+stack = caretEnsemble::caretList(y ~., data = mydata_class_trn, 
+                                 trControl = stack_control, 
+                                 methodList = modelList)
+results = resamples(stack)
+summary(results)
+```
+
+
+
+
+
+
+
+
+# Regression
+
+```{r, message=FALSE, warning=FALSE}
+reg_trn = read.csv("hw09-reg-train.csv")
+reg_tst_X = read.csv("hw09-reg-test-X.csv")
+
+# my training test split
+index = createDataPartition(reg_trn$y, p = 0.7, list = FALSE)
+mydata_reg_trn = reg_trn[index, ]
+mydata_reg_tst = reg_trn[-index, ]
+```
+
+## Additive linear model (required)
+
+```{r, message=FALSE, warning=FALSE}
+add_lin = train(y ~ ., data = mydata_reg_trn, method = "lm")
+
+# rmse
+get_rmse(add_lin, mydata_reg_tst, "y")
+```
+
+try different methods
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+stack_control = trainControl(method = "cv", number = 3)
+modelList = c("svmLinear", "gbm", "glmnet", "gamSpline", "enet", "gaussprLinear", "gaussprPoly", "gamLoess", "lmStepAIC", "bayesglm", "glmboost","glmStepAIC", "earth", "penalized", "rlm")
+modelList = c("lm", "earth", "svmPoly")
+# "rvmLinear", "rvmPoly", "rknnBel"
+stack = caretEnsemble::caretList(y ~., data = reg_trn, 
+                                 trControl = stack_control, 
+                                 methodList = modelList)
+results = resamples(stack)
+summary(results)
+```
+
+- Simple linear (for comparison)
+
+```{r}
+simple_lin = train(y ~., data = mydata_reg_trn, method = "lm")
+get_rmse(simple_lin, mydata_reg_tst, "y")
+# 1.88
+```
+
+- earth
+
+```{r, message=FALSE, warning=FALSE}
+earth_grid = data.frame(.degree = 1:2, .nprune = 1:20)
+earth_control = trainControl(method = "cv", number = 5)
+
+# boosted tree model
+earth = train(mydata_reg_trn[, -1], mydata_reg_trn$y,
+            method = "earth",
+            trControl = earth_control,
+            tuneGrid = earth_grid,
+            preProc = c("center", "scale"))
+
+
+# rmse
+get_rmse(earth, mydata_reg_tst, "y")
+```
+
+- SVM
+
+```{r}
+svm_control = trainControl(method = "cv", number = 5)
+svm_grid = expand.grid(C = c(2 ^ (-5:5)), sigma = c(2 ^ (-3:3)))
+
+svm = train(y ~ ., data = mydata_reg_trn, method = "svmLinear",
+             trControl = svm_control,
+             preProc = c("center", "scale"))
+
+get_rmse(svm, mydata_reg_tst, "y")
+```
+
+- gbm
+
+```{r, message=FALSE, warning=FALSE}
+gbm_control = trainControl(method = "cv", number = 5)
+
+gbm_grid = expand.grid(interaction.depth = c(1, 2, 3),
+                       n.trees = c(500, 1000, 1500),
+                       shrinkage = c(0.001, 0.01, 0.1),
+                       n.minobsinnode = 10)
+
+# boosted tree model
+gbm = train(y ~ ., data = mydata_reg_trn,
+               method = "gbm",
+               trControl = gbm_control,
+               verbose = FALSE,
+               preProc = c("center", "scale"),
+               tuneGrid = gbm_grid)
+
+get_rmse(gbm, mydata_reg_tst, "y")
+```
+
+- glmnet
+
+```{r, message=FALSE, warning=FALSE}
+glmnet_control = trainControl(method = "cv", number = 5)
+glmnet = train(
+  y ~ ., data = mydata_reg_trn, 
+  method = "glmnet",
+  trControl = glmnet_control,
+  preProc = c("center", "scale"),
+  tuneLength = 50
+)
+
+get_rmse(glmnet, mydata_reg_tst, "y")
+```
+
+
+
+- rlm
+
+```{r}
+rlm_control = trainControl(method = "cv", number = 5)
+rlm = train(y ~ ., data = mydata_reg_trn, 
+  method = "rlm",
+  trControl =rlm_control,
+  preProc = c("center", "scale"))
+
+get_rmse(rlm, mydata_reg_tst, "y")
+
+c(get_rmse(simple_lin, mydata_reg_tst, "y"),
+  get_rmse(svm, mydata_reg_tst, "y"),
+  get_rmse(gbm, mydata_reg_tst, "y"),
+  get_rmse(glmnet, mydata_reg_tst, "y"),
+  get_rmse(gamS, mydata_reg_tst, "y"),
+  get_rmse(gaussprPoly, mydata_reg_tst, "y"),
+  get_rmse(rlm, mydata_reg_tst, "y"))
+```
+

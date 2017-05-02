@@ -1,0 +1,200 @@
+---
+title: "Homework 5"
+author: 'Yiming Gao (NetID: yimingg2)'
+date: "2017/3/6"
+output:
+  html_document:
+    theme: readable
+    toc: yes
+linestretch: 1.2
+---
+
+# Exercise 1
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+# create data
+library(readr)
+library(class)
+library(MASS)
+library(ggplot2)
+
+wisc = read_csv("wisc.csv")
+set.seed(314)
+train_index = sample(nrow(wisc), size = 469)
+train_data = wisc[train_index, ]
+test_data = wisc[-train_index, ]
+
+# write to file
+write_csv(train_data, "wisc-train.csv")
+write_csv(test_data, "wisc-test.csv")
+```
+
+We use KNN to make classifications. First we coerce the response `class` to be a factor. Since `knn()` requires the predictors be their own data frame or matrix, and the class lables be a separate factor variable. We separate the training and test set.
+
+```{r}
+# Some functions
+accuracy <- function(actual, predicted) {
+  mean(actual == predicted)
+}
+
+get_pred = function(mod, data, res = "y", pos = 1, neg = 0, cut = 0.5) {
+  probs = predict(mod, newdata = data, type = "response")
+  ifelse(probs > cut, pos, neg)
+}
+
+train_data$class = factor(train_data$class)
+test_data$class = factor(test_data$class)
+# training data
+X_train = train_data[, -1]
+y_train = train_data$class
+
+# test data
+X_test = test_data[, -1]
+y_test = test_data$class
+```
+
+We consider $k = 1,2,...,50$ and find the best $k$ using both scaled and unscaled predictors.
+
+## Scaled Predictors
+
+```{r}
+set.seed(314)
+k_to_try = 1:50
+acc_k_train_scaled <- acc_k_test_scaled <- rep(0, length(k_to_try))
+
+for (i in seq_along(k_to_try)) {
+  pred_train_scaled = knn(train = scale(X_train),
+                          test = scale(X_train),
+                          cl = y_train,
+                          k = k_to_try[i])
+  pred_test_scaled = knn(train = scale(X_train),
+                         test = scale(X_test),
+                         cl = y_train,
+                         k = k_to_try[i])
+  acc_k_train_scaled[i] = accuracy(y_train, pred_train_scaled)
+  acc_k_test_scaled[i] = accuracy(y_test, pred_test_scaled)
+}
+
+c(max(acc_k_test_scaled), max(which(acc_k_test_scaled == max(acc_k_test_scaled))))
+```
+We see the largest test accuracy is 0.92. There are several different values of $k$ that are tied for the highest accuracy. Given a choice of these four values of k, we select the largest, as it is the least variable, i.e., the least complex model, and has the least chance of overfitting.
+
+Then we plot training and test accuracy vs $k$ on a single plot.
+
+```{r, fig.align="center", fig.width=10, message=FALSE, warning=FALSE}
+mydata_scaled = data.frame("k" = k_to_try, "train" = acc_k_train_scaled, "test" = acc_k_test_scaled)
+
+ggplot(mydata_scaled, aes(k)) + scale_x_continuous(breaks = seq(0, 50, 5), limits = c(0, 50)) +
+  geom_point(aes(y = train, colour = "train accuracy")) + 
+  geom_line(aes(y = train, colour = "train accuracy"), se = FALSE, size = 0.8) +
+  geom_point(aes(y = test, colour = "test accuracy")) +
+  geom_line(aes(y = test, colour = "test accuracy"), se = FALSE, size = 0.8) +
+  geom_vline(xintercept = 44, colour = "dodgerblue", size = 0.6, linetype = "longdash") + 
+  labs(title = "Train/ test accuracy vs. k (Scaled)" , x = "k", y = "Accuracy", color = "Test type\n") + 
+  theme(plot.title = element_text(hjust = 0.5)) + scale_colour_brewer(palette = "Set2")
+```
+
+## Unscaled Predictors
+
+```{r}
+set.seed(314)
+k_to_try = 1:50
+acc_k_train_unscaled <- acc_k_test_unscaled <- rep(0, length(k_to_try))
+
+for (i in seq_along(k_to_try)) {
+  pred_train_unscaled = knn(train = X_train,
+                            test = X_train,
+                            cl = y_train,
+                            k = k_to_try[i])
+  pred_test_unscaled = knn(train = X_train,
+                           test = X_test,
+                           cl = y_train,
+                           k = k_to_try[i])
+  acc_k_train_unscaled[i] = accuracy(y_train, pred_train_unscaled)
+  acc_k_test_unscaled[i] = accuracy(y_test, pred_test_unscaled)
+}
+
+c(max(acc_k_test_unscaled), max(which(acc_k_test_unscaled == max(acc_k_test_unscaled))))
+```
+
+We see the largest test accuracy is 0.88 when $k=4$. Then we plot training and test accuracy vs $k$ on a single plot.
+
+```{r, fig.align="center", fig.width=10, message=FALSE, warning=FALSE}
+mydata_unscaled = data.frame("k" = k_to_try, "train" = acc_k_train_unscaled, "test" = acc_k_test_unscaled)
+
+ggplot(mydata_unscaled, aes(k)) + scale_x_continuous(breaks = seq(0, 50, 5), limits = c(0, 50)) +
+  geom_point(aes(y = train, colour = "train accuracy")) + 
+  geom_line(aes(y = train, colour = "train accuracy"), se = FALSE, size = 0.8) +
+  geom_point(aes(y = test, colour = "test accuracy")) +
+  geom_line(aes(y = test, colour = "test accuracy"), se = FALSE, size = 0.8) +
+  geom_vline(xintercept = 4, colour = "dodgerblue", size = 0.6, linetype = "longdash") + 
+  labs(title = "Train/ test accuracy vs. k (Unscaled)", x = "k", y = "Accuracy", color = "Test type\n") + 
+  theme(plot.title = element_text(hjust = 0.5)) + scale_colour_brewer(palette = "Set2")
+```
+
+We notice that when test accuracy reaches its highest, k = 4, which is a complex model. Compared to larger k, this model may be overfitting. 
+
+We summarize the information into the following table:
+
+| Model    | Best k| Associated test accuracy |
+|:--------:|:-----:|:------------------------:|
+| Scaled   |    44 |            0.92          |
+| Unscaled |    4  |            0.88          |
+
+From the table, we notice *scaling* gives a **simpler model** with **higher test accuracy**, so it is helpful.
+
+# Exercise 2
+
+In this problem, we calculate *train*, *test*, and *5-fold* *cross-validated* accuracy for both an **additive logistic regression** and **LDA**. 
+
+```{r, message=FALSE, warning=FALSE}
+uin = 650379994
+set.seed(uin)
+
+# cross-validation
+folds = caret::createFolds(train_data$class, k = 5)
+
+# additive logistic regression
+add = glm(ifelse(train_data$class == "M", 1, 0) ~ ., data = train_data, family = "binomial")
+
+# LDA
+lda = lda(class ~ ., data = train_data)
+
+# Get accuracies
+# Additive logistic accuracy
+add_train_accuracy = accuracy(predicted = ifelse(get_pred(add, data = train_data, res = "class", pos = "1", neg = "0", cut = 0.5)==1, "M", "B"), actual = train_data$class)
+add_test_accuracy = accuracy(predicted = ifelse(get_pred(add, data = test_data, res = "class", pos = "1", neg = "0", cut = 0.5)==1, "M", "B"), actual = test_data$class)
+
+# LDA accuracy
+lda_train_accuracy = accuracy(predicted = predict(lda, newdata = train_data)$class, actual = train_data$class)
+lda_test_accuracy = accuracy(predicted = predict(lda, newdata = test_data)$class, actual = test_data$class)
+
+# 5-fold cross-validation
+fold_log_acc <- fold_lda_acc <- rep(0, 5)
+
+for (i in 1:5) {
+  fit_add = glm(ifelse(train_data[-folds[[i]], ]$class == "M", 1, 0) ~ ., data = train_data[-folds[[i]], ], family = "binomial")
+  fit_lda = lda(class ~ ., data = train_data[-folds[[i]], ])
+  
+  # predictions and accuracies
+  # additive logistic model
+  fold_log_acc[i] = accuracy(predicted = ifelse(get_pred(fit_add, data = train_data[folds[[i]], ], res = "class", pos = "1", neg = "0", cut = 0.5)==1, "M", "B"), actual = train_data[folds[[i]], ]$class)
+  
+  # lda
+  fold_lda_acc[i] = accuracy(predicted = predict(fit_lda, newdata = train_data[folds[[i]], ])$class, actual = train_data[folds[[i]], ]$class)
+}
+```
+
+Then we calculate cross-validated accuracies for both the additive logistic regression and LDA.
+
+```{r}
+c(mean(fold_log_acc), mean(fold_lda_acc))
+```
+
+We summarize the information into the following table:
+
+| Model   | Train accuracy     | Test accuracy         | Cross-validated accuracy  |
+|:---------:|:------------------:|:-------------------:|:--------------------------:
+| `Additive Logistic Regression` | `r round(add_train_accuracy,3)`  | `r add_test_accuracy`| `r round(mean(fold_log_acc),3)`| 
+| `LDA` | `r round(lda_train_accuracy,3)`  | `r lda_test_accuracy` | `r round(mean(fold_lda_acc),3)`|
+
+It seems that the cross-validation gives accuracies between training and test accuracy, which is what we expect.

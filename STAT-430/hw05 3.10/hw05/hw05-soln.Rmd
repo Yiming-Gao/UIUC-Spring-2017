@@ -1,0 +1,283 @@
+---
+title: "Homework 5"
+author: "STAT 430, Spring 2017"
+date: 'Due: Friday, March 10 by 11:59 PM'
+output:
+  html_document: default
+  pdf_document: default
+---
+
+# Exercise 1
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE, solution = TRUE}
+# create data
+library(readr)
+wisc = read_csv("wisc.csv")
+set.seed(314)
+train_index = sample(nrow(wisc), size = 469)
+train_data = wisc[train_index, ]
+test_data = wisc[-train_index, ]
+
+# write to file
+write_csv(train_data, "wisc-train.csv")
+write_csv(test_data, "wisc-test.csv")
+```
+
+**[15 points]** For this homework we will use data found in [`wisc-train.csv`](wisc-train.csv) and [`wisc-test.csv`](wisc-test.csv) which contain train and test data respectively. `wisc.csv` is provided but not used. This is a modification of the Breast Cancer Wisconsin (Diagnostic) dataset from the UCI Machine Learning Repository. Only the first 10 feature variables have been provided. (And these are all you should use.)
+
+- [UCI Page](https://archive.ics.uci.edu/ml/datasets/Breast+Cancer+Wisconsin+(Diagnostic))
+- [Data Detail](https://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/wdbc.names)
+
+You should consider coercing the response to be a factor variable. Do not use cross-validation for this exercise.
+
+Use KNN. Consider $k = 1, 2, \ldots, 50$. Find the best $k$ using both scaled and unscaled predictors. For both, plot train and test accuracy vs $k$ on a single plot, report the best $k$, and report the associated test accuracy.
+
+So, your answer will be two plots (both with two lines), two values of $k$, and two test accuracies. Was the scaling helpful? 
+
+Use the seed value provided below for this exercise.
+
+**Solution:**
+
+Note that some code, for plotting and summarizing, is hidden. See the .Rmd file for code.
+
+```{r}
+set.seed(314)
+```
+
+```{r, message = FALSE, warning = FALSE, solution = TRUE}
+# import data
+wisc_train = read.csv("wisc-train.csv")
+wisc_test = read.csv("wisc-test.csv")
+```
+
+```{r, solution = TRUE}
+# coerce to factor
+wisc_train$class = as.factor(wisc_train$class)
+wisc_test$class = as.factor(wisc_test$class)
+```
+
+```{r, solution = TRUE}
+# training data
+X_wisc_train = wisc_train[, -1]
+y_wisc_train = wisc_train$class
+
+# testing data
+X_wisc_test = wisc_test[, -1]
+y_wisc_test = wisc_test$class
+```
+
+```{r, message = FALSE, warning = FALSE, solution = TRUE}
+library(class)
+```
+
+```{r, solution = TRUE}
+accuracy = function(actual, predicted) {
+  mean(actual == predicted)
+}
+```
+
+```{r, solution = TRUE}
+# setup for scaled results
+k_to_try = 1:50
+te_acc_k = rep(x = 0, times = length(k_to_try))
+tr_acc_k = rep(x = 0, times = length(k_to_try))
+```
+
+```{r, solution = TRUE}
+# train scaled
+for(i in seq_along(k_to_try)) {
+  
+  te_pred = knn(train = scale(X_wisc_train), 
+                test = scale(X_wisc_test), 
+                cl = y_wisc_train, 
+                k = k_to_try[i])
+  
+  tr_pred = knn(train = scale(X_wisc_train),
+                test = scale(X_wisc_train),
+                cl = y_wisc_train,
+                k = k_to_try[i])
+  
+  te_acc_k[i] = accuracy(y_wisc_test, te_pred)
+  tr_acc_k[i] = accuracy(y_wisc_train, tr_pred)
+  
+}
+```
+
+```{r, fig.height = 5, fig.width = 8, solution = TRUE, echo = FALSE}
+# plot train accuracy vs choice of k
+plot(tr_acc_k, type = "b", col = "dodgerblue", pch = 1, 
+     xlab = "k, number of neighbors", ylab = "classification accuracy",
+     main = "Accuracy vs Neighbors, Scaled Predictors",
+     ylim = c(0.8, 1))
+# add points for test accuracy
+points(k_to_try, te_acc_k, type = "b", col = "dodgerblue", pch = 20)
+# add line indicating best k
+abline(v = max(which(te_acc_k == max(te_acc_k))), col = "darkorange", lwd = 1.5)
+# add line for max accuracy seen
+abline(h = max(te_acc_k), col = "grey", lty = 2)
+# add legend
+legend(x = 40, y = 0.85, c("train accuracy", "test accuracy"), 
+       col = c("dodgerblue", "dodgerblue"), pch = c(1, 20))
+```
+
+```{r, solution = TRUE, echo = FALSE}
+# scaled results
+scaled_k = max(which(te_acc_k == max(te_acc_k)))
+scaled_test_acc = max(te_acc_k)
+```
+
+```{r, solution = TRUE}
+# setup for unscaled results
+set.seed(42)
+k_to_try = 1:50
+te_acc_k = rep(x = 0, times = length(k_to_try))
+tr_acc_k = rep(x = 0, times = length(k_to_try))
+```
+
+```{r, solution = TRUE}
+# train unscaled
+for(i in seq_along(k_to_try)) {
+  
+  te_pred = knn(train = (X_wisc_train), 
+                test = (X_wisc_test), 
+                cl = y_wisc_train, 
+                k = k_to_try[i])
+  
+  tr_pred = knn(train = (X_wisc_train),
+                test = (X_wisc_train),
+                cl = y_wisc_train,
+                k = k_to_try[i])
+  
+  te_acc_k[i] = accuracy(y_wisc_test, te_pred)
+  tr_acc_k[i] = accuracy(y_wisc_train, tr_pred)
+  
+}
+```
+
+```{r, fig.height = 5, fig.width = 8, solution = TRUE, echo = FALSE}
+# plot train accuracy vs choice of k
+plot(tr_acc_k, type = "b", col = "dodgerblue", pch = 1, 
+     xlab = "k, number of neighbors", ylab = "classification accuracy",
+     main = "Accuracy vs Neighbors, Unscaled Predictors",
+     ylim = c(0.80, 1))
+# add points for test accuracy
+points(k_to_try, te_acc_k, type = "b", col = "dodgerblue", pch = 20)
+# add line indicating best k
+abline(v = max(which(te_acc_k == max(te_acc_k))), col = "darkorange", lwd = 1.5)
+# add line for max accuracy seen
+abline(h = max(te_acc_k), col = "grey", lty = 2)
+# add legend
+legend(x = 40, y = 0.97, c("train accuracy", "test accuracy"), 
+       col = c("dodgerblue", "dodgerblue"), pch = c(1, 20))
+```
+
+```{r, solution = TRUE, echo = FALSE}
+# unscaled results
+unscaled_k = max(which(te_acc_k == max(te_acc_k)))
+unscaled_test_acc = max(te_acc_k)
+```
+
+```{r, solution = TRUE, echo = FALSE}
+# summarize results
+results = data.frame(scaling = c("Yes", "No"),
+                     k = c(scaled_k, unscaled_k),
+                     acc = c(scaled_test_acc, unscaled_test_acc))
+colnames(results) = c("Predictor Scaling", "k", "Test Accuracy")
+knitr::kable(results)
+```
+
+We see better performance with the predictor scaling.
+
+
+# Exercise 2
+
+**[15 points]** Calculate *train*, *test*, and *5-fold* *cross-validated* **accuracy** for both an **additive logistic regression** and **LDA**. You may use the `createFolds()` function from `caret`, but you may not use the `train()` function from `caret`.
+
+Use your UIN in place of `uin`.
+
+```{r}
+uin = 123456789
+set.seed(uin)
+```
+
+**Solution:**
+
+```{r, solution = TRUE}
+library(MASS)
+```
+
+```{r, solution = TRUE}
+num_folds = 5
+wisc_folds = caret::createFolds(wisc_train$class, k = num_folds)
+```
+
+```{r, solution = TRUE}
+glm_acc = rep(0, times = num_folds)
+lda_acc = rep(0, times = num_folds)
+```
+
+```{r, message = FALSE, warning = FALSE, solution = TRUE}
+for(i in seq_along(wisc_folds)) {
+  
+  # split for fold i
+  train = wisc_train[-wisc_folds[[i]], ]
+  valid = wisc_train[wisc_folds[[i]], ]
+  
+  # logistic regression
+  glm_fit = glm(class ~ ., data = train, family = "binomial")
+  glm_prob = predict(glm_fit, valid)
+  glm_pred = ifelse(glm_prob > 0.5, "M", "B")
+  glm_acc[i] = accuracy(actual = valid$class, predicted = glm_pred)
+  
+  # lda
+  lda_fit = lda(class ~ ., data = train)
+  lda_pred = predict(lda_fit, valid)$class
+  lda_acc[i] = accuracy(actual = valid$class, predicted = lda_pred)
+  
+}
+```
+
+```{r, solution = TRUE}
+# cv results
+glm_cv = mean(glm_acc)
+lda_cv = mean(lda_acc)
+```
+
+```{r, message = FALSE, warning = FALSE, solution = TRUE}
+# logistic
+glm_fit = glm(class ~ ., data = wisc_train, family = "binomial")
+
+# train acc
+glm_train_prob = predict(glm_fit, wisc_train)
+glm_train_pred = ifelse(glm_train_prob > 0.5, "M", "B")
+glm_train_acc = accuracy(actual = wisc_train$class, predicted = glm_train_pred)
+
+# test acc
+glm_test_prob = predict(glm_fit, wisc_test)
+glm_test_pred = ifelse(glm_test_prob > 0.5, "M", "B")
+glm_test_acc = accuracy(actual = wisc_test$class, predicted = glm_test_pred)
+```
+
+```{r, solution = TRUE}
+# lda
+lda_fit = lda(class ~ ., data = wisc_train)
+
+# train acc
+lda_train_pred = predict(lda_fit, wisc_train)$class
+lda_train_acc = accuracy(actual = wisc_train$class, predicted = lda_train_pred)
+
+# test acc
+lda_test_pred = predict(lda_fit, wisc_test)$class
+lda_test_acc = accuracy(actual = wisc_test$class, predicted = lda_test_pred)
+```
+
+```{r, solution = TRUE, echo = FALSE}
+results = data.frame(
+  method = c("Logistic", "LDA"),
+  train = c(glm_train_acc, lda_train_acc),
+  cv = c(glm_cv, lda_cv),
+  test = c(glm_test_acc, lda_test_acc)
+)
+colnames(results) = c("Method", "Train Accuracy", "5-Fold CV Accuracy", "Test Accuracy")
+knitr::kable(results)
+```
