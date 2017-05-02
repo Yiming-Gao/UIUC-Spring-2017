@@ -1,0 +1,94 @@
+---
+title: "Gender Recognition by Voice"
+author: "Group 13"
+date: "4/10/2017"
+output:
+  html_document:
+    theme: readable
+---
+### Names of Group Members
+Yiming Gao (yimingg2), Korawat Tanwisuth (tanwisu2), Ling-Chieh Wei (lwei13)
+
+### Description of the dataset
+
+The data set we obtain from kaggle contains several acoustic properties of the voice and speech. Observations in our data set had been pre - processed using trainR and seewave package. The range of the frequency is between 0hz-280hz (human vocal range). There are total of 3,168 observations of recorded sample voices and 21 variables, including the response variable 'label' (male or female) that we are trying to predict. Half of the responses are male and the other half are female. The variables that stood out as the most important is mean fundamental frequency, the average of the lowest frequency of periodic wave form. Males tend to have low mean fundamental frequency while their female counterparts tend to have higher frequency.
+
+The list of variables in the data set (the explanation about the variables came from the original source):
+  
+- meanfreq: mean frequency (in kHz)
+- sd: standard deviation of frequency
+- median: median frequency (in kHz)
+- Q25: first quantile (in kHz)
+- Q75: third quantile (in kHz)
+- IQR: interquantile range (in kHz)
+- skew: skewness
+- kurt: kurtosis
+- sp.ent: spectral entropy
+- sfm: spectral flatness
+- mode: mode frequency
+- centroid: frequency centroid
+- meanfun: average of fundamental frequency measured across acoustic signal
+- minfun: minimum fundamental frequency measured across acoustic signal
+- maxfun: maximum fundamental frequency measured across acoustic signal
+- meandom: average of dominant frequency measured across acoustic signal
+- mindom: minimum of dominant frequency measured across acoustic signal
+- maxdom: maximum of dominant frequency measured across acoustic signal
+- dfrange: range of dominant frequency measured across acoustic signal
+- modindx: modulation index. Calculated as the accumulated absolute difference between adjacent measurements of fundamental frequencies divided by the frequency range
+- label: the categorical response, male or female
+
+
+### Background information
+
+This data set comes from Kaggle website: https://www.kaggle.com/primaryobjects/voicegender.
+
+### Statistical Learning Task
+
+The goal of the project is to classify whether a given observation is a male or female voice using machine learning methods. 
+  
+Besides the most basic model, additive logistic model, we will also try to apply some other flexible machine learning algorithms for the classification such as random forest, trees model, KNN, etc. to improve the efficiency and accuracy.
+
+### Tentative Data Analysis in R
+**Load data**
+
+We load our data into R, and display the first few values of response `label`.
+
+```{r, message=FALSE, warning=FALSE}
+library(readr)
+voice = read.csv("voice.csv")
+head(voice$label)
+```
+
+We can check if the dataset contains any missing values, and also check the levels of response `label`. It shows there are no missing values in each column and it has both 1584 observations for "male" and "female".
+
+```{r}
+sapply(voice, function(x) sum(is.na(x)))
+table(voice$label)
+```
+
+**Basic Modeling**
+
+This is a classification problem, we build a simple model using logistic regression, make predictions on the dataset and print the first few values of the predictions. 
+
+```{r, message=FALSE, warning=FALSE}
+# fit a logistic regression model
+voice_glm = glm(label ~ ., data = voice, family = "binomial")
+
+# make predictions
+pred = predict(voice_glm, type = "response")
+
+# convert back to gender
+head(ifelse(pred > 0.5, "male", "female"))
+head(voice$label)
+```
+
+As we have seen here, the first few observations are male. It seems that logistic model performs quite well as it accurately predicts the correct label.
+
+
+### Reference:
+
+the voice samples were collected from the following resources:
+
+- [The Harvard-Haskins Database of Regularly-Timed Speech](http://www.nsi.edu/~ani/download.html)
+- [VoxForge Speech Corpus](http://www.voxforge.org/)
+- [Festvox CMU_ARCTIC Speech Database at Carnegie Mellon University](http://festvox.org/cmu_arctic/)

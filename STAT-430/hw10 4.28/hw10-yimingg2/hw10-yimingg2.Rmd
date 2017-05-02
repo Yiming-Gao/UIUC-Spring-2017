@@ -1,0 +1,356 @@
+---
+title: "Homework 10"
+author: 'Yiming Gao (NetID: yimingg2)'
+date: "2017/4/16"
+output:
+  html_document:
+    theme: readable
+    toc: yes
+---
+
+## Exercise 1
+
+For this question we will return to the `OJ` data from the `ISLR` package. We will again attempt to predict the `Purchase` variable. After changing `uin` to your `UIN`, use the following code to test-train split the data.
+
+```{r, message = FALSE, warning = FALSE}
+library(ISLR)
+library(caret)
+uin = 650379994
+set.seed(uin)
+oj_idx = createDataPartition(OJ$Purchase, p = 0.5, list = FALSE)
+oj_trn = OJ[oj_idx,]
+oj_tst = OJ[-oj_idx,]
+```
+
+First we set up some helper functions.
+
+```{r}
+# accuracy function
+accuracy <- function(actual, predicted) {
+  mean(actual == predicted)
+}
+
+# extract the row with the best tuning parameters
+get_best_result = function(caret_fit) {
+  best_result = caret_fit$results[as.numeric(rownames(caret_fit$bestTune)), ]
+  rownames(best_result) = NULL
+  best_result
+}
+```
+
+### (a) SVM with a linear kernel
+
+```{r, message=FALSE, warning=FALSE}
+lin_grid = expand.grid(C = c(2 ^ (-5:5)))
+cv_5 = trainControl(method = "cv", number = 5)
+
+svm_lin = train(Purchase ~ ., data = oj_trn, 
+                method = "svmLinear",
+                trControl = cv_5,
+                tuneGrid = lin_grid)
+
+svm_lin_acc = round(accuracy(oj_tst$Purchase, predict(svm_lin, oj_tst)), 4)
+svm_best_lin = get_best_result(svm_lin)
+```
+
+The chosen values of `C` is `r svm_best_lin$C`. The test accuracy is `r svm_lin_acc`.
+
+### (b) SVM with a polynomial kernel
+
+```{r, message=FALSE, warning=FALSE}
+svm_poly = train(Purchase ~ ., data = oj_trn, 
+                 method = "svmPoly",
+                 trControl = cv_5)
+
+svm_best_poly = get_best_result(svm_poly)
+svm_poly_acc = round(accuracy(oj_tst$Purchase, predict(svm_poly, oj_tst)), 4)
+```
+
+```{r}
+# confusion matrix
+table(oj_tst$Purchase, predict(svm_poly, oj_tst))
+```
+
+Confusion matrix is above. 
+
+The chosen values of `degree`, `scale` and `C` are `r svm_best_poly$degree`, `r svm_best_poly$scale` and `r svm_best_poly$C`. The test accuracy is `r svm_poly_acc`.
+
+### (c) SVM with a radial kernel
+
+```{r}
+rad_grid = expand.grid(C = c(2 ^ (-2:3)), sigma  = c(2 ^ (-3:1)))
+
+svm_rad = train(Purchase ~ ., data = oj_trn, 
+                method = "svmRadial",
+                trControl = cv_5,
+                tuneGrid = rad_grid)
+
+svm_rad_acc = round(accuracy(oj_tst$Purchase, predict(svm_rad, oj_tst)), 4)
+svm_best_rad = get_best_result(svm_rad)
+```
+
+The chosen values of `C` and `sigma` are `r svm_best_rad$C` and `r svm_best_rad$sigma`. The test accuracy is `r svm_rad_acc`.
+
+### (d) Random Forest
+
+```{r, message=FALSE, warning=FALSE}
+rf_grid = expand.grid(mtry = 1: (ncol(oj_trn) - 1))
+
+rf = train(Purchase ~ ., data = oj_trn, 
+           method = "rf",
+           trControl = cv_5, 
+           tuneGrid = rf_grid)
+
+rf_best = get_best_result(rf)
+rf_acc = round(accuracy(oj_tst$Purchase, predict(rf, oj_tst)), 4)
+```
+
+The chosen values of `mtry` is `r rf_best$mtry`. The test accuracy is `r rf_acc`.
+
+### Summarization
+
+```{r}
+method = c("SVM with linear kernel", "SVM with polynomial kernel", "SVM with radial kernel", "Random Forest")
+
+tst_acc = c(svm_lin_acc, svm_poly_acc, svm_rad_acc, rf_acc)
+
+results1 = data.frame(method, tst_acc)
+colnames(results1) = c("Method", "Test Accuracy")
+knitr::kable(results1, align = "c")
+```
+
+From the table above, we know that **SVM with a polynomial kernel** performs best with this seed, in term of test accuracy.
+
+## Exercise 2
+
+For this question, use the data found in `clust_data.csv`. We will attempt to cluster this data using $k$-means. But, what $k$ should we use?
+
+```{r, message=FALSE, warning=FALSE}
+clust = read.csv("clust_data.csv")
+```
+
+### (a)
+
+Apply $k$-means to this data 15 times, using number of centers from 1 to 15. Each time use `nstart = 10` and store the `tot.withinss` value from the resulting object. 
+
+```{r, fig.align="center"}
+tot_withinss = rep(0, 15)
+
+for (i in 1:15) {
+  kmean = kmeans(clust, centers = i, nstart = 10)
+  tot_withinss[i] = kmean$tot.withinss
+}
+
+plot(1: 15, tot_withinss, pch = 20, type = "o", col = "dodgerblue2", xlab = "Number of clusters", ylab = "tot.withinss")
+grid()
+```
+
+The elbow occurs at 4, we may consider keeping first 4 clusters.
+
+### (b)
+
+Re-apply $k$-means for your chosen number of centers. How many observations are placed in each cluster? What is the value of `tot.withinss`?
+
+```{r}
+kmean = kmeans(clust, centers = 4, nstart = 10)
+kmean$size # 25
+kmean$tot.withinss
+```
+
+25 observations are placed in each cluster. Here `tot.withinss` is `r kmean$tot.withinss`.
+
+### (c)
+
+Visualize this data. Plot the data using the first two variables and color the points according to the $k$-means clustering. Based on this plot, do you think you made a good choice for the number of centers? (Briefly explain.)
+
+```{r, fig.align="center"}
+kmeans_clusters = kmean$cluster
+
+plot(
+  clust[, 1],
+  clust[, 2],
+  col = kmeans_clusters,
+  pch = 20,
+  xlab = "First Variable",
+  ylab = "Second Variable"
+)
+grid()
+```
+
+I don't think k-means performs well in this case. Clusters are overlapped and hard to separate the points out.
+
+### (d)
+
+Use PCA to visualize this data. Plot the data using the first two principal components and color the points according to the $k$-means clustering. Based on this plot, do you think you made a good choice for the number of centers? (Briefly explain.)
+
+```{r, fig.align="center"}
+clust_pca = prcomp(clust, scale = TRUE)
+
+#summary(clust_pca)
+
+plot(
+  clust_pca$x[, 1],
+  clust_pca$x[, 2],
+  col = kmeans_clusters,
+  pch = 20,
+  xlab = "First Principal Component",
+  ylab = "Second Principal Component"
+)
+grid()
+```
+
+The graph above clearly reverals four separated clusters, which indicates our number of clusters is appropriate.
+
+### (e)
+
+Calculate the proportion of variation explained by the principal components. Make a plot of the cumulative proportion explained. How many principal components are need to explain 95% of the variation in the data?
+
+```{r, fig.align="center"}
+# the proportion of variance explained by a pc
+get_PVE = function(pca_out) {
+  pca_out$sdev ^ 2 / sum(pca_out$sdev ^ 2)
+}
+
+pve = get_PVE(clust_pca)
+
+head(pve)
+
+plot(
+  cumsum(pve),
+  xlab = "Principal Component",
+  ylab = "Cumulative Proportion of Variance Explained",
+  ylim = c(0, 1),
+  type = 'b'
+)
+abline(h = 0.95, lty = 2, col = "dodgerblue2", lwd = 1.5)
+```
+
+```{r}
+min(which((cumsum(pve) >= 0.95) == TRUE))
+cumsum(pve)[37]
+```
+
+We need 37 principal components to achieve the goal. And 37 PCs will explain 95.49% of the variation in the data.
+
+## Exercise 3
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+library(sparcl)
+```
+
+### (a)
+Perform hierarchical clustering six times. Consider all possible combinations of linkages (average, single, complete) and data scaling. (Scaled, Unscaled.)
+
+| Linkage  | Scaling |
+|----------|---------|
+| Single   | No      |
+| Average  | No      |
+| Complete | No      |
+| Single   | Yes     |
+| Average  | Yes     |
+| Complete | Yes     |
+
+```{r, fig.align="center", fig.height=8, fig.width=10}
+# single linkage, no scaling
+hc1 = hclust(dist(USArrests), method = "single")
+hcut1 = cutree(hc1, 4)
+
+ColorDendrogram(hc1, y = hcut1,
+                labels = names(hcut1),
+                main = "Single Linkage, no scaling",
+                branchlength = 7.3)
+```
+
+```{r, fig.align="center", fig.height=8, fig.width=10}
+# average linkage, no scaling
+hc2 = hclust(dist(USArrests), method = "average")
+hcut2 = cutree(hc2, 4)
+
+ColorDendrogram(hc2, y = hcut2,
+                labels = names(hcut2),
+                main = "Average Linkage, no scaling",
+                branchlength = 30)
+```
+
+```{r, fig.align="center", fig.height=8, fig.width=10}
+# complete linkage, no scaling
+hc3 = hclust(dist(USArrests), method = "complete")
+hcut3 = cutree(hc3, 4)
+
+ColorDendrogram(hc3, y = hcut3,
+                labels = names(hcut3),
+                main = "Complete Linkage, no scaling",
+                branchlength = 58)
+```
+
+```{r, fig.align="center", fig.height=8, fig.width=10}
+# single linkage, scaling
+hc4 = hclust(dist(scale(USArrests)), method = "single")
+hcut4 = cutree(hc4, 4)
+
+ColorDendrogram(hc4, y = hcut4,
+                labels = names(hcut4),
+                main = "Single Linkage, scaling",
+                branchlength = 0.38)
+```
+
+```{r, fig.align="center", fig.height=8, fig.width=10}
+# average linkage, scaling
+hc5 = hclust(dist(scale(USArrests)), method = "average")
+hcut5 = cutree(hc5, 4)
+
+ColorDendrogram(hc5, y = hcut5,
+                labels = names(hcut5),
+                main = "Average Linkage, scaling",
+                branchlength = 0.62)
+```
+
+```{r, fig.align="center", fig.height=8, fig.width=10}
+# complete linkage, scaling
+hc6 = hclust(dist(scale(USArrests)), method = "complete")
+hcut6 = cutree(hc6, 4)
+
+ColorDendrogram(hc6, y = hcut6,
+                labels = names(hcut6),
+                main = "Complete Linkage, scaling",
+                branchlength = 1.18)
+```
+
+Each time, cut the dendrogram at a height that results in four distinct clusters. Plot the results, with a color for each cluster.
+
+**(b)** Based on the above plots, do any of the results seem more useful than the others? (There is no correct answer here.) Pick your favorite. (Again, no correct answer.)
+
+I prefer the last one, i.e., **complete linkage with scaling**. Because it has separated data evenly into four clusters as we want. However, in other plots, there seem to be at least one cluster contains too much or few records.
+
+**(c)** Use the documentation for `?hclust` to find other possible linkages. Pick one and try it. Compare the results to your favorite from **(b)**. Is it much different?
+
+I use `'median'` as linkage this time.
+
+```{r, fig.align="center", fig.height=8, fig.width=10}
+hc7 = hclust(dist(scale(USArrests)), method = "median")
+hcut7 = cutree(hc7, 4)
+
+ColorDendrogram(hc7, y = hcut7,
+                labels = names(hcut7),
+                main = "Median Linkage, scaling",
+                branchlength = 0.47)
+```
+
+We notice there are two clusters contain only three and one observations, which is very differenct from the results from (b).
+
+**(d)** Use the documentation for `?dist` to find other possible distance measures. (We have been using `euclidean`.) Pick one (not `binary`) and try it. Compare the results to your favorite from **(b)**. Is it much different?
+
+Here I choose `'manhattan'` as the distance measure.
+
+```{r, fig.align="center", fig.height=8, fig.width=10}
+# complete linkage, scaling
+hc8 = hclust(dist(scale(USArrests), method = "manhattan"), method = "complete")
+hcut8 = cutree(hc8, 4)
+
+ColorDendrogram(hc8, y = hcut8,
+                labels = names(hcut8),
+                main = "Complete Linkage, Manhattan Distance Measure",
+                branchlength = 2.33)
+```
+
+It seems that there is not much difference between this one and the results from (b). They both similarly separate out the data.

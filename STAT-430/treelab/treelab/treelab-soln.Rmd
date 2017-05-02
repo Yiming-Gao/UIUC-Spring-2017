@@ -1,0 +1,243 @@
+---
+title: "Lab: Trees, Random Forests, Boosting"
+author: "STAT 430, Spring 2017"
+date: ''
+output:
+  html_document: default
+---
+
+For this lab you will need the following packages:
+
+```{r, message = FALSE, warning = FALSE}
+library(ISLR)
+library(tree)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(gbm)
+library(caret)
+library(plyr)
+```
+
+You will investigate the use of trees, random forests, and boosting on the `OJ` data from the `ISLR` package. The categorical response is `Purchase`, while all other variables are used as predictors. Below we create a test-train split of the data.
+
+```{r}
+set.seed(42)
+oj_idx = createDataPartition(OJ$Purchase, p = 0.5, list = FALSE)
+oj_trn = OJ[oj_idx,]
+oj_tst = OJ[-oj_idx,]
+```
+
+Since we are performing classification, we will calculate several accuracies.
+
+```{r}
+accuracy = function(actual, predicted) {
+  mean(actual == predicted)
+}
+```
+
+> Fit a tree to the training data using the `tree()` function, with `Purchase` as the response and the other variables as predictors. Use the  `summary()` function to produce summary statistics about the tree, and describe the results obtained. What is the training error rate? How many terminal nodes does the tree have? What variables are used?
+
+```{r}
+# your code here
+```
+
+```{r, solution = TRUE}
+oj_tree = tree(Purchase ~ ., data = oj_trn)
+summary(oj_tree)
+```
+
+> Type in the name of the tree object in order to get a detailed text output. Pick one of the **terminal nodes**, and interpret the information displayed.
+
+```{r}
+# your code here
+```
+
+```{r, solution = TRUE}
+oj_tree
+```
+
+`4) LoyalCH < 0.277977 119  77.81 MM ( 0.10084 0.89916 ) *`
+
+Observations in this node have `LoyalCH < 0.277977` as well as the properties of all the previous splits. There are `119` observations in this node. We predicted the class `MM` for observations following these splits since `0.89916` of the observations in this node have class `MM`.
+
+> Create a plot of the tree you fit. Interpret the results.
+
+```{r}
+# your code here
+```
+
+```{r, solution = TRUE}
+plot(oj_tree)
+text(oj_tree, pretty = 0)
+title(main = "Unpruned Classification Tree")
+```
+
+> Predict the response on the test data, and produce a confusion matrix comparing the test labels to the predicted test labels. What is the test accuracy?
+
+```{r}
+# your code here
+```
+
+```{r, solution = TRUE}
+oj_tree_tst_pred = predict(oj_tree, oj_tst, type = "class")
+table(pred = oj_tree_tst_pred, act = oj_tst$Purchase)
+```
+
+The code below trains a single tree using 5-fold cross-validation. (It will consider three different complexity parameters.) Also, instead of `tree()`, we use `rpart()` together with the `caret` package.
+
+```{r}
+cv_5 = trainControl(method = "cv", number = 5)
+oj_tree_cv  = train(Purchase ~ .,
+                    data = oj_trn,
+                    trControl = cv_5,
+                    method = "rpart")
+```
+
+We also create a plot of the resulting tree.
+
+```{r}
+prp(oj_tree_cv$finalModel)
+```
+
+> Predict the response on the test data using this new tree. What is the test accuracy? Does this perform better than the previous (unpruned) tree? Is this tree smaller or larger?
+
+```{r}
+# your code here
+```
+
+```{r, solution = TRUE}
+accuracy(predict(oj_tree_cv, oj_tst), oj_tst$Purchase)
+```
+
+> Now we'll consider ensemble methods. The following defines OOB resampling for use when tuning a random forest.
+
+```{r}
+oob = trainControl(method = "oob")
+```
+
+> Tune a random forest using OOB resampling and **all** possible values of `mtry`. What value of `mtry` is found to be the best?
+
+```{r}
+# your code here
+```
+
+```{r, solution = TRUE}
+rf_grid = expand.grid(mtry = 1:(ncol(oj_trn) - 1))
+oj_rf_oob  = train(Purchase ~ .,
+                   data = oj_trn,
+                   trControl = oob,
+                   method = "rf",
+                   tuneGrid = rf_grid)
+oj_rf_oob$bestTune
+```
+
+> Report the OOB classification accuracy for a bagged tree model.
+
+```{r}
+# your code here
+```
+
+```{r, solution = TRUE}
+oj_rf_oob$results[ncol(oj_trn) - 1, ]$Accuracy
+```
+
+> Create a variable importance plot for the random forest you tuned.
+
+```{r}
+# your code here
+```
+
+```{r, solution = TRUE}
+varImpPlot(oj_rf_oob$finalModel)
+```
+
+> Report the test accuracy for the tuned random forest.
+
+```{r}
+# your code here
+```
+
+```{r, solution = TRUE}
+accuracy(predict(oj_rf_oob, oj_tst), oj_tst$Purchase)
+```
+
+> Use the following tuning grid to tune a boosted tree model using 5-fold cross-validation.
+
+```{r}
+gbm_grid_small = expand.grid(interaction.depth = c(1, 2),
+                             n.trees = c(500, 1000, 1500),
+                             shrinkage = c(0.01, 0.1),
+                             n.minobsinnode = 10)
+```
+
+```{r}
+# your code here
+```
+
+```{r, solution = TRUE}
+oj_gbm_small_cv  = train(Purchase ~ .,
+                   data = oj_trn,
+                   trControl = cv_5,
+                   method = "gbm",
+                   verbose = FALSE,
+                   tuneGrid = gbm_grid_small)
+```
+
+> Report the **two** most important variables according to the tuned boosted model. (Attempt to suppress the plot that is usually created.) 
+
+```{r}
+# your code here
+```
+
+```{r, solution = TRUE}
+summary(oj_gbm_small_cv, plotit = FALSE)[1:2, ]
+# summary(oj_gbm_small_cv, plotit = FALSE)
+```
+
+> What were the tuning parameters of the chosen boosted model?
+
+```{r}
+# your code here
+```
+
+```{r, solution = TRUE}
+oj_gbm_small_cv$bestTune
+```
+
+> Calculate the test accuracy for the chosen boosted model.
+
+```{r}
+# your code here
+```
+
+```{r, solution = TRUE}
+accuracy(predict(oj_gbm_small_cv, oj_tst), oj_tst$Purchase)
+```
+
+> Create a larger tuning grid and fit a new boosted model. Report the tuning parameters and new test accuracy. Is this new model better? Is this model different?
+
+```{r}
+# your code here
+```
+
+```{r, solution = TRUE}
+gbm_grid_large = expand.grid(interaction.depth = c(1, 2, 3),
+                             n.trees = c(500, 1000, 1500),
+                             shrinkage = c(0.001, 0.01, 0.1),
+                             n.minobsinnode = 10)
+
+oj_gbm_large_cv  = train(Purchase ~ .,
+                         data = oj_trn,
+                         trControl = cv_5,
+                         method = "gbm",
+                         verbose = FALSE,
+                         tuneGrid = gbm_grid_large)
+
+oj_gbm_large_cv$bestTune
+
+accuracy(predict(oj_gbm_large_cv, oj_tst), oj_tst$Purchase)
+```
+
+> Of all the models you have fit, which is best?
+

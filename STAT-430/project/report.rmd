@@ -1,0 +1,275 @@
+---
+title: "Gender Recognition by Voice"
+author: "Group 13"
+date: "4/10/2017"
+output:
+  html_document:
+    theme: readable
+---
+
+## Introduction
+
+This data set comes from Kaggle website: https://www.kaggle.com/primaryobjects/voicegender. It contains several acoustic properties of the voice and speech. Observations in our data set had been pre - processed using trainR and seewave package. The range of the frequency is between 0hz-280hz (human vocal range). There are total of 3,168 observations of recorded sample voices and 21 variables, including the response variable 'label' (male or female) that we are trying to predict. Half of the responses are male and the other half are female. The variables that stood out as the most important is mean fundamental frequency, the average of the lowest frequency of periodic wave form. Males tend to have low mean fundamental frequency while their female counterparts tend to have higher frequency.
+
+The list of variables in the data set (the explanation about the variables came from the original source):
+  
+- meanfreq: mean frequency (in kHz)
+- sd: standard deviation of frequency
+- median: median frequency (in kHz)
+- Q25: first quantile (in kHz)
+- Q75: third quantile (in kHz)
+- IQR: interquantile range (in kHz)
+- skew: skewness
+- kurt: kurtosis
+- sp.ent: spectral entropy
+- sfm: spectral flatness
+- mode: mode frequency
+- centroid: frequency centroid
+- meanfun: average of fundamental frequency measured across acoustic signal
+- minfun: minimum fundamental frequency measured across acoustic signal
+- maxfun: maximum fundamental frequency measured across acoustic signal
+- meandom: average of dominant frequency measured across acoustic signal
+- mindom: minimum of dominant frequency measured across acoustic signal
+- maxdom: maximum of dominant frequency measured across acoustic signal
+- dfrange: range of dominant frequency measured across acoustic signal
+- modindx: modulation index. Calculated as the accumulated absolute difference between adjacent measurements of fundamental frequencies divided by the frequency range
+- label: the categorical response, male or female
+
+The goal of the project is to classify whether a given observation is a male or female voice using machine learning methods. 
+  
+Besides the most basic model, additive logistic model, we will also try to apply some other flexible machine learning algorithms for the classification such as random forest, trees model, KNN, etc. to improve the efficiency and accuracy.
+
+
+## Methods
+### Data Preparation
+
+We load our data into R, and display the first few values of response `label`.
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+# load all necessary packages
+library(readr)
+library(caret)
+library(MASS)
+```
+
+```{r}
+voice = read.csv("voice.csv")
+head(voice$label)
+```
+
+We can check if the dataset contains any missing values, and also check the levels of response `label`. It shows there are no missing values in each column and it has both 1584 observations for "male" and "female". Then we separate our dataset into training and test set with training proportion 0.7 and see how the values of response variable are spread out.
+
+```{r}
+sapply(voice, function(x) sum(is.na(x)))
+
+# my training test split
+set.seed(430)
+index = createDataPartition(voice$label, p = 0.7, list = FALSE)
+voice_trn = voice[index, ]
+voice_tst = voice[-index, ]
+
+table(voice_trn$label)
+```
+
+We will use classification accuracy as our metric, defined in the following cell, as well as a function to extract the best result from a caret object.
+
+```{r}
+# accuracy function
+accuracy <- function(actual, predicted) {
+  mean(actual == predicted)
+}
+
+# extract the row with the best tuning parameters
+get_best_result = function(caret_fit) {
+  best_result = caret_fit$results[as.numeric(rownames(caret_fit$bestTune)), ]
+  rownames(best_result) = NULL
+  best_result
+}
+```
+
+### Data Visualization
+
+The response variable is `label` and takes values `Male` and `Female`. Our goal is to classify this response as well as possible. There are 20 predictors in our dataset, so we first explore the relationship of those feature variables with the response variable.
+
+```{r, echo=FALSE, fig.align="c", fig.height=9, fig.width=12, message=FALSE}
+featurePlot(x = voice_trn[, 1: 20], 
+            y = voice_trn$label,
+            plot = "density", 
+            ## Pass in options to xyplot() to 
+            ## make it prettier
+            scales = list(x = list(relation = "free"), 
+                          y = list(relation = "free")), 
+            adjust = 1.5, 
+            pch = "|", 
+            layout = c(5, 4), 
+            auto.key = list(columns = 2))
+```
+
+From the plot above, we notice that `sd`, `sfm`, `sp.ent`, `mindom`, `mode`, `Q25`, `meanfun`, `centroid` and `IQR` show promise as predictors. Then we plot scatterplot matrix with ellipses for those predictors.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.align="c"}
+featurePlot(x = voice_trn[c("sd", "sfm", "sp.ent")], 
+            y = voice_trn$label, 
+            plot = "pairs",
+            ## Add a key at the top
+            auto.key = list(columns = 2))
+featurePlot(x = voice_trn[c("mindom", "mode", "Q25")], 
+            y = voice_trn$label, 
+            plot = "pairs",
+            ## Add a key at the top
+            auto.key = list(columns = 2))
+featurePlot(x = voice_trn[c("meanfun", "centroid", "IQR")], 
+            y = voice_trn$label, 
+            plot = "pairs",
+            ## Add a key at the top
+            auto.key = list(columns = 2))
+```
+
+The above three plots show that those predictors should be good for prediction. Then we fit a boosted tree model and create a plot showing feature importance.
+
+```{r, fig.align="c", fig.height=8, message=FALSE, warning=FALSE}
+cv_5 = trainControl(method = "cv", number = 5)
+gbm_grid = expand.grid(interaction.depth = c(1, 2),
+                       n.trees = c(500, 1000, 1500),
+                       shrinkage = c(0.001, 0.01, 0.1),
+                       n.minobsinnode = 10)
+
+voice_gbm = train(label ~ ., data = voice_trn, 
+                  method = "gbm",
+                  trControl = cv_5,
+                  verbose = FALSE,
+                  tuneGrid = gbm_grid)
+
+voice_var_imp = summary(voice_gbm)
+
+head(voice_var_imp)
+```
+
+Here we see the five most important variables are `r voice_var_imp$var[1]`, `r voice_var_imp$var[2]`, `r voice_var_imp$var[3]`, `r voice_var_imp$var[4]` and `r voice_var_imp$var[5]`, which are all among the 9 predictors that we pick up by visualizing above.
+
+As a result, we will consider some models that use only these five predictors.
+
+We will consider following methods:
+
+- Logistic Regression (`glm`)
+- Naive Bayes (`NB`)
+- K-nearest Neighbors (`knn`)
+- Regularized Discriminant Analysis (`rda`)
+- Elastic Net (`glmnet`)
+- Boosted Trees (`gbm`)
+- Random Forest (`rf`)
+- Support Vector Machine (`svm`)
+
+For each method we will consider different sets of features:
+
+- small: Only `r voice_var_imp$var[1]`, `r voice_var_imp$var[2]`, `r voice_var_imp$var[3]`, `r voice_var_imp$var[4]` and `r voice_var_imp$var[5]`
+- ploy: All first and second degree terms using `r voice_var_imp$var[1]`, `r voice_var_imp$var[2]`, `r voice_var_imp$var[3]`, `r voice_var_imp$var[4]` and `r voice_var_imp$var[5]`
+- int: All possible interactions between `r voice_var_imp$var[1]`, `r voice_var_imp$var[2]`, `r voice_var_imp$var[3]`, `r voice_var_imp$var[4]` and `r voice_var_imp$var[5]`
+- full: All features
+
+First we fit logistic regressions using `caret` package with `method = "glm"`. It is a linear, parametric and discriminant method. There is nothing to tune, but we store the results for comparing cross-validated errors later.
+
+```{r, message=FALSE, warning=FALSE}
+glm_small = train(label ~ meanfun + IQR + sd + maxdom + sfm, 
+                  data = voice_trn, method = "glm",
+                  trControl = cv_5)
+
+glm_poly = train(label ~ poly(meanfun, 2) + poly(IQR, 2) + poly(sd, 2) + poly(maxdom, 2) + poly(sfm, 2),
+                 data = voice_trn, method = "glm", 
+                 trControl = cv_5)
+
+glm_int = train(label ~ meanfun * IQR * sd * maxdom * sfm,
+                data = voice_trn, method = "glm", 
+                trControl = cv_5)
+
+glm_full = train(label ~ ., data = voice_trn,
+                 method = "glm",
+                 trControl = cv_5)
+
+# test accuracies
+acc_glm_small = accuracy(predict(glm_small, voice_tst), voice_tst$label)
+acc_glm_poly = accuracy(predict(glm_poly, voice_tst), voice_tst$label)
+acc_glm_int = accuracy(predict(glm_int, voice_tst), voice_tst$label)
+acc_glm_full = accuracy(predict(glm_full, voice_tst), voice_tst$label)
+```
+
+Then we train a Naive Bayes classifier using `caret` package with `method = "nb"`. In general Naive Bayes classifiers are not linear. It is a parametric and discriminant method. 
+
+In `caret`, there are two tuning parameters Laplace Correction (`fL`) and Distribution Type (`usekernel`). We will use the default settings here.
+
+```{r, message=FALSE, warning=FALSE}
+nb_small = train(label ~ meanfun + IQR + sd + maxdom + sfm, 
+                 data = voice_trn, method = "nb",
+                 trControl = cv_5)
+
+nb_poly = train(label ~ poly(meanfun, 2) + poly(IQR, 2) + poly(sd, 2) + poly(maxdom, 2) + poly(sfm, 2),
+                data = voice_trn, method = "glm", 
+                trControl = cv_5)
+
+nb_int = train(label ~ meanfun * IQR * sd * maxdom * sfm,
+               data = voice_trn, method = "glm", 
+               trControl = cv_5)
+
+nb_full = train(label ~ ., data = voice_trn,
+                method = "glm",
+                trControl = cv_5)
+
+# test accuracies
+acc_nb_small = accuracy(predict(nb_small, voice_tst), voice_tst$label)
+acc_nb_poly = accuracy(predict(nb_poly, voice_tst), voice_tst$label)
+acc_nb_int = accuracy(predict(nb_int, voice_tst), voice_tst$label)
+acc_nb_full = accuracy(predict(nb_full, voice_tst), voice_tst$label)
+```
+
+K-nearest neighbors is a generative method, which are fit below using `caret` with `method = "knn"`. It is a non-parametric and discriminant method. If Euclidean distance is used as the distance measure (the most common choise), the KNN classifier results in piecewise linear decision boundaries. 
+
+We simply specify a tuning grid length 50. Since KNN requires variables to be normalized or scaled, we can preprocess the data by centering and scaling.
+
+```{r, message=FALSE, warning=FALSE}
+knn_small = train(label ~ meanfun + IQR + sd + maxdom + sfm, 
+                  data = voice_trn, method = "knn",
+                  trControl = cv_5,
+                  tuneLength = 50,
+                  preProcess = c("center", "scale"))
+
+knn_poly = train(label ~ poly(meanfun, 2) + poly(IQR, 2) + poly(sd, 2) + poly(maxdom, 2) + poly(sfm, 2),
+                 data = voice_trn, method = "knn", 
+                 trControl = cv_5,
+                 tuneLength = 50,
+                 preProcess = c("center", "scale"))
+
+knn_int = train(label ~ meanfun * IQR * sd * maxdom * sfm,
+                data = voice_trn, method = "knn", 
+                trControl = cv_5,
+                tuneLength = 50,
+                preProcess = c("center", "scale"))
+
+knn_full = train(label ~ ., data = voice_trn,
+                 method = "knn",
+                 trControl = cv_5,
+                 tuneLength = 50,
+                 preProcess = c("center", "scale"))
+
+# test accuracies
+acc_knn_small = accuracy(predict(knn_small, voice_tst), voice_tst$label)
+acc_knn_poly = accuracy(predict(knn_poly, voice_tst), voice_tst$label)
+acc_knn_int = accuracy(predict(knn_int, voice_tst), voice_tst$label)
+acc_knn_full = accuracy(predict(knn_full, voice_tst), voice_tst$label)
+
+# Note: K-NN generally achieve better accuracy than the first two methods.
+```
+
+
+## Results
+
+
+## Discussion
+
+
+## Appendix
+
+the voice samples were collected from the following resources:
+
+- [The Harvard-Haskins Database of Regularly-Timed Speech](http://www.nsi.edu/~ani/download.html)
+- [VoxForge Speech Corpus](http://www.voxforge.org/)
+- [Festvox CMU_ARCTIC Speech Database at Carnegie Mellon University](http://festvox.org/cmu_arctic/)
