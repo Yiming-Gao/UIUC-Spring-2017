@@ -1,0 +1,316 @@
+---
+title: "STAT 428 Homework 4"
+author: 'Yiming Gao (NetID: yimingg2)'
+date: "2017/3/8"
+output:
+  html_document:
+    theme: readable
+    toc: yes
+linestretch: 1.2
+---
+
+# Exercise 1 (Rizzo 7.7)
+We want to discuss the `scor` data in `bootstrap` library.
+
+Let $\hat{\lambda_1}>\hat{\lambda_2}>\hat{\lambda_3}>\hat{\lambda_4}>\hat{\lambda_5}$ be the eigenvalues of $\hat{\Sigma}$, where $\hat{\Sigma}$ is the MLE of $\Sigma$. Sample estimate of $\theta$ is 
+$$\hat{\theta} = \frac{\hat{\lambda_1}}{\sum_{j=1}^{5}\hat{\lambda_j}}$$
+We use bootstrap to estimate the bias and standard error of $\theta$.
+
+```{r, message=FALSE, warning=FALSE}
+library(bootstrap)
+data(scor)
+B = 10000
+n = nrow(scor)
+
+# Sigma matrix
+Sigma = cov(scor)
+# sort eigenvalues with decreasing order
+eigen = eigen(Sigma, only.values = TRUE)$values
+sort_eigen = sort(eigen, decreasing = TRUE)
+
+thetahat = sort_eigen[1]/ sum(sort_eigen)
+thetahatboot = numeric(B)
+
+set.seed(27)
+for (b in 1:B) {
+  xb = sample(1:n, n, replace = TRUE)
+  scor_boot = scor[xb, ]
+  Sigma_boot = cov(scor_boot)
+  eigen_boot = eigen(Sigma_boot, only.values = TRUE)$values
+  sort_eigen_boot = sort(eigen_boot, decreasing = TRUE)
+  thetahatboot[b] = sort_eigen_boot[1]/ sum(sort_eigen_boot)
+}
+
+# estimate bias
+bias = mean(thetahatboot) - thetahat
+se = sd(thetahatboot)
+```
+We summarize the results into the following table:
+
+| thetahat    | bias   | standard error    | 
+|:----------------------:|:-----------------:|:---------------:|
+| `r round(thetahat, 4)` | `r round(bias, 4)`| `r round(se, 4)`| 
+
+The bootstrap estimate of the bias of $\hat{\theta}$ for the `scor` data is `r round(bias, 4)`, and the estimate of the standard error is `r round(se, 4)`, with seed 27.
+
+# Exercise 2 (Rizzo 7.8)
+In this problem, we use **jackknife** method to estimate the bias and standard error of $\hat{\theta}$.
+
+```{r}
+data(scor)
+n = nrow(scor)
+
+# Sigma matrix
+Sigma = cov(scor)
+# sort eigenvalues with decreasing order
+eigen = eigen(Sigma, only.values = TRUE)$values
+sort_eigen = sort(eigen, decreasing = TRUE)
+thetahat = sort_eigen[1]/ sum(sort_eigen)
+
+# jackknife estimates
+thetahatjack = numeric(n)
+
+for (i in 1:n) {
+  # leave-one-out cross-validation
+  scor_jack = scor[-i, ]
+  Sigma_jack = cov(scor_jack)
+  eigen_jack = eigen(Sigma_jack, only.values = TRUE)$values
+  sort_eigen_jack = sort(eigen_jack, decreasing = TRUE)
+  thetahatjack[i] = sort_eigen_jack[1]/ sum(sort_eigen_jack)
+}
+
+# estimate bias
+bias = (n - 1) * (mean(thetahatjack) - thetahat)
+se = sqrt((n - 1) * mean((thetahatjack - mean(thetahatjack))^2))
+```
+
+We summarize the results into the following table:
+
+| thetahat    | bias   | standard error    | 
+|:----------------------:|:-----------------:|:---------------:|
+| `r round(thetahat, 4)` | `r round(bias, 4)`| `r round(se, 4)`| 
+
+The jackknife estimate of the bias of $\hat{\theta}$ for the `scor` data is `r round(bias, 4)`, and the estimate of the standard error is `r round(se, 4)`.
+
+
+# Exercise 3 (Rizzo 7.10)
+We consider four models for predicting magnetic measurement (Y) from chemical measurement (X) are:
+
+- Linear: $Y=\beta_0+\beta_1+\epsilon$
+- Quadratic: $Y=\beta_0+\beta_1X+\beta_2X^2+\epsilon$
+- Exponential: $log(Y)=log(\beta_0)+\beta_1X+\epsilon$
+- Cubic : $Y=\beta_0+\beta_1X+\beta_2X^2+\beta_3X^3+\epsilon$
+
+The code to estimate the parameters of the four models follows.
+
+```{r, message=FALSE, warning=FALSE}
+library(DAAG)
+attach(ironslag)
+n = length(magnetic)
+e1 <- e2 <- e3 <- e4 <- r1 <- r2 <- r3 <- r4 <- numeric(n) # error
+
+# n-fold cross validation
+# fit models on leave-one-out samples
+for (k in 1:n) {
+  x = chemical[-k]
+  y = magnetic[-k]
+  
+  Model1 = lm(y ~ x)
+  yhat1 = Model1$coef[1] + Model1$coef[2] * chemical[k]
+  e1[k] = magnetic[k] - yhat1
+  r1[k] = summary(Model1)$adj.r.squared
+  
+  Model2 = lm(y ~ x + I(x^2))
+  yhat2 = Model2$coef[1] + Model2$coef[2] * chemical[k] + Model2$coef[3] * chemical[k]^2
+  e2[k] = magnetic[k] - yhat2
+  r2[k] = summary(Model2)$adj.r.squared
+  
+  Model3 = lm(log(y) ~ x)
+  logyhat3 = Model3$coef[1] + Model3$coef[2] * chemical[k]
+  yhat3 = exp(logyhat3)
+  e3[k] = magnetic[k] - yhat3
+  r3[k] = summary(Model3)$adj.r.squared
+  
+  Model4 = lm(y ~ x + I(x^2) + I(x^3))
+  yhat4 = Model4$coef[1] + Model4$coef[2] * chemical[k] + Model4$coef[3] * chemical[k]^2 + Model4$coef[4] * chemical[k]^3
+  e4[k] = magnetic[k] - yhat4
+  r4[k] = summary(Model4)$adj.r.squared
+}
+
+error = round(c(mean(e1^2), mean(e2^2), mean(e3^2), mean(e4^2)), 4)
+adj_R = round(c(mean(r1), mean(r2), mean(r3), mean(r4)), 4)
+```
+
+We can calculate the estimates for prediction error from the n-fold cross validation.
+
+| Linear       | Quadratic   | Exponential | Cubic       |
+|:------------:|:-----------:|:-----------:|:-----------:|
+| `r error[1]` | `r error[2]`| `r error[3]`| `r error[4]`|
+
+- According to the prediction error criterion, **quadratic** model fits the data best.
+
+Then we obtain the adjusted $R^2$ for each model.
+
+| Linear       | Quadratic   | Exponential | Cubic       |
+|:------------:|:-----------:|:-----------:|:-----------:|
+| `r adj_R[1]` | `r adj_R[2]`| `r adj_R[3]`| `r adj_R[4]`|
+
+- According to the maximum adjusted R-squared criterion, **quadratic** model performs best.
+
+# Exercise 4 (Rizzo 7.11)
+Use **leave-two-out** cross validation to compare the models.
+
+- Linear: $Y=\beta_0+\beta_1+\epsilon$
+- Quadratic: $Y=\beta_0+\beta_1X+\beta_2X^2+\epsilon$
+- Exponential: $log(Y)=log(\beta_0)+\beta_1X+\epsilon$
+- Log-Log: $log(Y)=\beta_0+\beta_1log(X)+\epsilon$
+
+The code to estimate the parameters of the four models follows.
+
+```{r, message=FALSE, warning=FALSE}
+library(DAAG)
+attach(ironslag)
+set.seed(27)
+n = length(magnetic)
+n_folds = n*(n-1)/2 # number of folds
+r1 <- r2 <- r3 <- r4 <- e1 <- e2 <- e3 <- e4 <- numeric(n_folds) # error
+yhat1 <- yhat2 <- yhat3 <- yhat4 <- matrix(0, n_folds, 2)
+tmp = list()
+
+for (i in 1:n) {
+  tmp[[i]] = cbind(rep(i, n-i), (i+1): n)
+}
+
+index = as.matrix(tmp[[1]])
+for (j in 2: (n-1)) {
+  index <- rbind(index, as.matrix(tmp[[j]]))
+}
+```
+
+In this case, I do the leave-two-out simulations on all possible $\frac{n(n-1)}{2}$ pairs and list those combinations in a variable called `index`. Then we fit models for each row of index. First let's take a look of part of index to get an intuition of it.
+
+```{r}
+index[51:55, ]
+
+# leave-two-out cross validation
+for (k in 1: n_folds) {
+  x = chemical[-index[k, ]]
+  y = magnetic[-index[k, ]]
+  Model1 = lm(y ~ x)
+  yhat1[k, ] = Model1$coef[1] + Model1$coef[2] * chemical[index[k, ]]
+  e1[k] = sum((yhat1[k, ] - magnetic[index[k, ]])^2)
+  r1[k] = summary(Model1)$adj.r.squared
+      
+  Model2 = lm(y ~ x + I(x^2))
+  yhat2[k, ] = Model2$coef[1] + Model2$coef[2] * chemical[index[k, ]] + Model2$coef[3] * chemical[index[k, ]]^2
+  e2[k] = sum((yhat2[k, ] - magnetic[index[k, ]])^2)
+  r2[k] = summary(Model2)$adj.r.squared
+      
+  Model3 = lm(log(y) ~ x)
+  logyhat3 = Model3$coef[1] + Model3$coef[2] * chemical[index[k, ]]
+  yhat3[k, ] = exp(logyhat3)
+  e3[k] = sum((yhat3[k, ] - magnetic[index[k, ]])^2)
+  r3[k] = summary(Model3)$adj.r.squared
+      
+  Model4 = lm(log(y) ~ log(x))
+  logyhat4 = Model4$coef[1] + Model4$coef[2] * log(chemical[index[k, ]])
+  yhat4[k, ] = exp(logyhat4)
+  e4[k] = sum((yhat4[k, ] - magnetic[index[k, ]])^2)
+  r4[k] = summary(Model4)$adj.r.squared
+}
+
+error = round(c(mean(e1), mean(e2), mean(e3), mean(e4)), 4)
+
+adj_R = round(c(mean(r1), mean(r2), mean(r3), mean(r4)), 4)
+```
+
+We can calculate the estimates for prediction error from the leave-two-out cross validation. Since for each loop, we create a model, fit the data and make predictions on two points. For each point, we compute the squared error of predictions
+$$e_k^2=(y_{1k}-\hat{y_{1k}})^2+(y_{2k}-\hat{y_{2k}})^2,$$
+where $y_{1k},y_{2k}$ are the true values of `magnetic`. Then we estimate the mean squared error of prediction
+$$error=\frac{1}{n}\sum_{k=1}^{nfolds}e_k^2$$
+
+We summarize the information into the following tables:
+
+| Linear       | Quadratic   | Exponential | Log-log     |
+|:------------:|:-----------:|:-----------:|:-----------:|
+| `r error[1]` | `r error[2]`| `r error[3]`| `r error[4]`|
+
+- According to the prediction error criterion, **quadratic** model fits the data best.
+
+Then we obtain the adjusted $R^2$ for each model.
+
+| Linear       | Quadratic   | Exponential | Log-log     |
+|:------------:|:-----------:|:-----------:|:-----------:|
+| `r adj_R[1]` | `r adj_R[2]`| `r adj_R[3]`| `r adj_R[4]`|
+
+- According to the maximum adjusted R-squared criterion, **quadratic** model performs best with mean adjusted R-squared `r adj_R[2]`.
+
+# Exercise 5 (Rizzo 8.1)
+
+Implement the two-sample Cramer-von Mises test for equal distributions as a permutation test. Apply the test to `chickwts` data from `faraway` package comparing chicks fes casein with chicks fed horsebean.
+
+The Cramer-von Mises statistic, which estimates the integrated squared distance between the distributions, is defined by
+$$
+W_2 = \frac{mn}{(m+n)^2}[\sum_{i=1}^n(F_n(x_i)-G_m(x_i))^2+\sum_{j=1}^m(F_n(y_j)-G_m(y_i))^2]
+$$
+where $F_n$ is the ecdf of the sample $x_1,...,x_n$ and $G_m$ is the ecdf of the sample $y_1,...,y_m$.
+
+```{r, message=FALSE, warning=FALSE}
+library(faraway)
+data("chickwts")
+attach(chickwts)
+x = sort(as.vector(weight[feed == "casein"]))
+y = sort(as.vector(weight[feed == "horsebean"]))
+n1 = length(x)
+n2 = length(y)
+detach(chickwts)
+
+# define cramer von function
+cramer.v <- function(x, y) {
+  nx = length(x)
+  ny = length(y)
+  # empirical cdf
+  sx = ecdf(x)(x) - ecdf(y)(x)
+  sy = ecdf(x)(y) - ecdf(y)(y)
+  stat = (nx*ny/ (nx + ny)^2)*(sum(sx^2) + sum(ny^2))
+  return(stat)
+}
+
+# permutation test
+M = 1000 # number of replicates
+P = c(x, y) # Pooled sample
+K = 1: (n1 + n2)
+true = cramer.v(x, y)
+values = numeric(M)
+set.seed(27)
+
+for (m in 1:M) {
+  Xperm = sample(K, n1, replace = FALSE)
+  xperm = P[Xperm]
+  yperm = P[-Xperm]
+  values[m] = cramer.v(xperm, yperm)
+}
+
+options(scipen = 999) # prevent scientific notation
+p = mean(c(true, values) >= true)
+p
+```
+
+Since the p-value of our Cramer-V test for equal distributions is `r round(p, 6)`, which is less than 0.05. We reject the null hypothesis and conclude that there is a significant difference between weights of chick fed with casein and horsebean.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

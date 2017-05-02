@@ -1,0 +1,914 @@
+---
+title: "STAT 428 Homework 3"
+author: "Yiming Gao (yimingg2)"
+date: "2017/2/24"
+output:
+  html_document:
+    theme: readable
+    toc: yes
+linestretch: 1.2
+fontsize: 10.5pt
+---
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+library(tibble)
+library(knitr)
+# ggplot2 multiplot function
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+  library(grid)
+  
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+  
+  numPlots = length(plots)
+  
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                     ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+  
+  if (numPlots==1) {
+    print(plots[[1]])
+    
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+    
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+      
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+```
+
+# Problem 1: Two-Sample T-test vs Wilcoxon Ranked Sum Test
+## (a) Normal Distribution
+
+$X\sim N(0,1)$, $Y\sim N(-\Delta,1)$, t-statistic of two-Sample T-test for normal distribution is 
+
+$$
+t = \frac{\bar{X}-\bar{Y}}{s_p\sqrt{2/n}}
+$$
+where 
+$$s_p^2=\frac{(n-1)s_x^2+(n-1)s_y^2}{2n-2}.$$
+We can either write our own function or use R function `t.test`, which give same results. We first want to see how large `n` should be before replacing the exact p-value for `W` with the p-value from normal approximation. Here we set $\Delta = 0.5$, and sample size `n` range from 1 to 10.
+
+```{r}
+nvals = seq(1, 10)
+P.value.ex <- P.value.asy <- numeric(10)
+set.seed(27)
+for (n in nvals) {
+  n = nvals[n]
+  X = rnorm(n)
+  # we set delta = 0.5
+  Y = rnorm(n, -0.5, 1)
+      # alternative: X has larger value than Y
+  P.value.ex[n] = wilcox.test(X, Y, alternative = "greater", exact = TRUE)$p.value
+  P.value.asy[n] = wilcox.test(X, Y, alternative = "greater", exact = FALSE)$p.value
+}
+
+comparison = data.frame("n" = nvals,
+                        "Wilcox Test (exact)" = round(P.value.ex, 4), 
+                        "Wilcox Test (asymptotic)" = round(P.value.asy, 4), 
+                        "Difference" = round(P.value.ex - P.value.asy, 4))
+kable(comparison, caption = "Simulations over sample size n", align = "c")
+```
+
+From the table, we know that when $n \ge 5$, the **absolute difference** of p-values between exact Wilcox test and asymptotic Wilcox test will be stably less than 0.005. So when $n \ge 5$, we could use asymptotic Wilcox test, which saves a lot of running time.
+
+**Type 1 Error Rate & Power Analysis**
+
+The simulation parameters are:
+
+- Significance level $\alpha = 0.05$
+- Difference $\Delta$ ranges from 0 to 0.9 by 0.1 (when $\Delta = 0$, Type I error rate)
+- Sample size $n$ ranges from 10 to 100 by 10
+- Replicates $m=500$
+- Two tests: T-test & Wilxon test (asymptotic)
+
+```{r}
+alpha = 0.05
+deltavals = c(0:9)/10
+m = 500
+nvals = c(10, 20, 30, 40, 50, 60, 70, 80, 90, 100)
+powermatrix1 <- powermatrix2 <- sematrix <- matrix(0, 10, 10)
+
+function_a <- function(n, delta, alpha){
+  decisions_t <- decisions_asy <- numeric(m)
+  for (j in 1:m){
+    X = rnorm(n, 0, 1)
+    Y = rnorm(n, -delta, 1)
+    # test decision is 1(reject) or 0
+    P.value1 = t.test(X, Y, alternative = "greater", var.equal = TRUE)$p.value
+    P.value2 = wilcox.test(X, Y, alternative = "greater", exact = FALSE)$p.value
+    decisions_t[j] = (P.value1 < alpha)
+    decisions_asy[j] = (P.value2 < alpha)
+  }
+  c(mean(decisions_t), mean(decisions_asy))
+}
+
+set.seed(27)
+for (i in 1:10){
+  n = nvals[i]
+
+  for (j in 1:10){
+    delta = deltavals[j]
+    powermatrix1[i,j] = function_a(n, delta, alpha)[1]
+    powermatrix2[i,j] = function_a(n, delta, alpha)[2]
+    sematrix[i,j] = round(sqrt(powermatrix1[i,j]*(1-powermatrix1[i,j])/m),4)
+  }
+}
+
+colnames(powermatrix1) = c("0","0.1","0.2","0.3","0.4","0.5","0.6","0.7","0.8","0.9")
+rownames(powermatrix1) = c("n = 10","n = 20","n = 30","n = 40","n = 50",
+                          "n = 60","n = 70","n = 80","n = 90","n = 100")
+as.data.frame(powermatrix1)
+```
+
+Above is the power matrix for t-test. When $\Delta = 0$, it is simply the Type 1 error rate (the first column of above matrix). In terms of bound for the standard error, we have 
+$$\hat{se}(\hat{p})=\sqrt{\hat{p}(1-\hat{p})}\le \frac{1}{2\sqrt{m}}$$,
+where m is the number of replicates. 
+
+```{r}
+bound = round(1/(2*sqrt(m)), 4)
+bound
+
+colnames(sematrix) = c("0","0.1","0.2","0.3","0.4","0.5","0.6","0.7","0.8","0.9")
+rownames(sematrix) = c("n = 10","n = 20","n = 30","n = 40","n = 50",
+                          "n = 60","n = 70","n = 80","n = 90","n = 100")
+as.data.frame(sematrix)
+```
+
+Above is the standard error matrix for t-test. Here when $m=500$, we calculate the boundary and the $\hat{se}(\hat{p})$ for each case, just for illustration. We notice that in this table, the largest value of $\hat{se}(\hat{p})$ is `r bound`, **no value is greater than boundary**. The discussions for power and problem (b) and (c) are similar, so I'll skip the process.
+
+Then we create the power curves for different $\Delta$ from 0 to 0.9, with `step = 0.1`. We define a function called `multiplot` for visualization in `ggplot2` package.
+
+```{r}
+# ggplot2 multiplot function
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+  library(grid)
+  
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+  
+  numPlots = length(plots)
+  
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                     ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+  
+  if (numPlots==1) {
+    print(plots[[1]])
+    
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+    
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+      
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+
+```
+
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+data0 = data.frame("n" = nvals, "T" = powermatrix1[ ,1], "W_asy" = powermatrix2[, 1])
+data1 = data.frame("n" = nvals, "T" = powermatrix1[ ,2], "W_asy" = powermatrix2[, 2])
+data2 = data.frame("n" = nvals, "T" = powermatrix1[ ,3], "W_asy" = powermatrix2[, 3])
+data3 = data.frame("n" = nvals, "T" = powermatrix1[ ,4], "W_asy" = powermatrix2[, 4])
+data4 = data.frame("n" = nvals, "T" = powermatrix1[ ,5], "W_asy" = powermatrix2[, 5])
+data5 = data.frame("n" = nvals, "T" = powermatrix1[ ,6], "W_asy" = powermatrix2[, 6])
+data6 = data.frame("n" = nvals, "T" = powermatrix1[ ,7], "W_asy" = powermatrix2[, 7])
+data7 = data.frame("n" = nvals, "T" = powermatrix1[ ,8], "W_asy" = powermatrix2[, 8])
+data8 = data.frame("n" = nvals, "T" = powermatrix1[ ,9], "W_asy" = powermatrix2[, 9])
+data9 = data.frame("n" = nvals, "T" = powermatrix1[ ,10], "W_asy" = powermatrix2[, 10])
+
+library(ggplot2)
+plot0 <- ggplot(data0, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) + 
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(Delta," = 0")), 
+       x = "n", y = "Type 1 error", color = "Test type\n") + 
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.1,0.85), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+plot1 <- ggplot(data1, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(Delta," = 0.1")), 
+       x = "n", y = "Power", color = "Test type\n") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8, 0.2), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+plot2 <- ggplot(data2, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(Delta," = 0.2")), 
+       x = "n", y = "Power", color = "Test type\n") + 
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8, 0.2), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+plot3 <- ggplot(data3, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(Delta," = 0.3")), 
+       x = "n", y = "Power", color = "Test type\n") + 
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8, 0.2), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+plot4 <- ggplot(data4, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(Delta," = 0.4")), 
+       x = "n", y = "Power", color = "Test type\n") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8, 0.2), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+plot5 <- ggplot(data5, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(Delta," = 0.5")), 
+       x = "n", y = "Power", color = "Test type\n") + 
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8, 0.2), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+plot6 <- ggplot(data6, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(Delta," = 0.6")), 
+       x = "n", y = "Power", color = "Test type\n") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8, 0.2), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+plot7 <- ggplot(data7, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(Delta," = 0.7")), 
+       x = "n", y = "Power", color = "Test type\n") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8, 0.2), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+plot8 <- ggplot(data8, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(Delta," = 0.8")), 
+       x = "n", y = "Power", color = "Test type\n") + 
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8, 0.2), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+```
+
+The codes are redundant, so I only include the codes for `plot9`. The other plots are done with similar procedure.
+
+```{r, message=FALSE, warning=FALSE}
+plot9 <- ggplot(data9, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(Delta," = 0.9")), 
+       x = "n", y = "Power", color = "Test type\n") + 
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8, 0.2), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+plot0
+```
+
+Above is the power plot when $\Delta=0$, which is equivalent to Type I error rate.
+
+```{r, fig.height=9, fig.width=12, message=FALSE, warning=FALSE}
+multiplot(plot1,plot4,plot7, plot2, plot5, plot8, plot3, plot6, plot9, cols = 3)
+```
+
+From the plot, we know that the power approaches to 1 **faster** when $\Delta$ gets larger. Then we create the power curves for different sample sizes from 20 to 100, with `step = 20`.
+
+```{r, fig.height=5, fig.width=12, message=FALSE, warning=FALSE}
+mydata1 = data.frame("delta" = deltavals, "power2" = powermatrix1[2, ], "power4" = powermatrix1[4, ], "power6" = powermatrix1[6, ], "power8" = powermatrix1[8, ], "power10" = powermatrix1[10, ])
+
+mydata2 = data.frame("delta" = deltavals, "power2" = powermatrix2[2, ], "power4" = powermatrix2[4, ],"power6" = powermatrix2[6, ],"power8" = powermatrix2[8, ], "power10" = powermatrix2[10, ])
+
+p1 <- ggplot(mydata1, aes(delta)) + scale_x_continuous(breaks=seq(0, 0.9, 0.1), limits=c(0, 0.9)) +
+  geom_smooth(aes(y = power2, colour = "n = 20"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = power4, colour = "n = 40"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = power6, colour = "n = 60"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = power8, colour = "n = 80"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = power10, colour = "n = 100"), se = FALSE, size = 0.8) +
+  labs(title = "Power curves of different sample size for T test", 
+       x = expression(paste(Delta)), y = "Power", color = "Sample size\n") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.1,0.8), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+p2 <- ggplot(mydata1, aes(delta)) + scale_x_continuous(breaks=seq(0, 0.9, 0.1), limits=c(0, 0.9)) +
+  geom_smooth(aes(y = power2, colour = "n = 20"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = power4, colour = "n = 40"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = power6, colour = "n = 60"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = power8, colour = "n = 80"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = power10, colour = "n = 100"), se = FALSE, size = 0.8) +
+  labs(title = "Power curves of different sample size for Wilcox test", 
+       x = expression(paste(Delta)), y = "Power", color = "Sample size\n") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.1,0.8), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+multiplot(p1, p2, cols = 2)
+```
+
+For a fixed sample size (one line in the graph), the larger $\Delta$ is, the greater power it has.
+
+
+## (b) Exponential Distribution
+
+Here we let $f_X(x)=e^{-x}$ for $x>0$, and $f_Y(y)=\lambda e^{-\lambda y}$ for $y>0$ and $\lambda \ge1$. The null hypothesis is
+$$\lambda = 1.$$
+And the alternative hypothesis is
+$$H_a: \lambda>1$$
+which is equivalent to 
+$$H_a: \mu_X>\mu_Y$$
+**Type 1 Error Rate & Power Analysis**
+
+The simulation parameters are:
+
+- Significance level $\alpha = 0.05$
+- Difference $\lambda$ ranges from 1 to 1.9 by 0.1 (when $\lambda = 1$, Type I error rate)
+- Sample size $n$ ranges from 10 to 100 by 10
+- Replicates $m=500$
+- Two tests: T-test & Wilxon test (asymptotic)
+
+Since we stick to $m=500$ replicates as before, the bound for standard error is still `r bound`. We will not calculate se matrix again, the conclusions will be the same.
+
+```{r}
+alpha = 0.05
+lambdavals = c(10: 19)/10
+nvals = c(10, 20, 30, 40, 50, 60, 70, 80, 90, 100)
+m = 500
+powermatrix1 <- powermatrix2 <- matrix(0, 10, 10)
+
+function_b <- function(n, lambda, alpha){
+  decisions_t <- decisions_asy <- numeric(m)
+  for (j in 1:m){
+    X = rexp(n)
+    Y = rexp(n, rate = lambda)
+    # test decision is 1(reject) or 0
+    P.value1 = t.test(X, Y, alternative = "greater", var.equal = TRUE)$p.value
+    P.value2 = wilcox.test(X, Y, alternative = "greater", exact = FALSE)$p.value
+    decisions_t[j] = (P.value1 < alpha)
+    decisions_asy[j] = (P.value2 < alpha)
+  }
+  c(mean(decisions_t), mean(decisions_asy))
+}
+
+set.seed(27)
+for (i in 1:10){
+  n = nvals[i]
+
+  for (j in 1:10){
+    lambda = lambdavals[j]
+    powermatrix1[i,j] = function_b(n, lambda, alpha)[1]
+    powermatrix2[i,j] = function_b(n, lambda, alpha)[2]
+  }
+}
+
+colnames(powermatrix2) = c("1","1.1","1.2","1.3","1.4","1.5","1.6","1.7","1.8","1.9")
+rownames(powermatrix2) = c("n = 10","n = 20","n = 30","n = 40","n = 50",
+                          "n = 60","n = 70","n = 80","n = 90","n = 100")
+as.data.frame(powermatrix2)
+```
+
+Above is the power matrix for asymptotic Wilxon test. Then we create the power curves for different $\lambda$ from 1 to 1.9, with `step = 0.1`.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+data0 = data.frame("n" = nvals, "T" = powermatrix1[ ,1], "W_asy" = powermatrix2[, 1])
+data1 = data.frame("n" = nvals, "T" = powermatrix1[ ,2], "W_asy" = powermatrix2[, 2])
+data2 = data.frame("n" = nvals, "T" = powermatrix1[ ,3], "W_asy" = powermatrix2[, 3])
+data3 = data.frame("n" = nvals, "T" = powermatrix1[ ,4], "W_asy" = powermatrix2[, 4])
+data4 = data.frame("n" = nvals, "T" = powermatrix1[ ,5], "W_asy" = powermatrix2[, 5])
+data5 = data.frame("n" = nvals, "T" = powermatrix1[ ,6], "W_asy" = powermatrix2[, 6])
+data6 = data.frame("n" = nvals, "T" = powermatrix1[ ,7], "W_asy" = powermatrix2[, 7])
+data7 = data.frame("n" = nvals, "T" = powermatrix1[ ,8], "W_asy" = powermatrix2[, 8])
+data8 = data.frame("n" = nvals, "T" = powermatrix1[ ,9], "W_asy" = powermatrix2[, 9])
+data9 = data.frame("n" = nvals, "T" = powermatrix1[ ,10], "W_asy" = powermatrix2[, 10])
+
+library(ggplot2)
+plot0 <- ggplot(data0, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) + 
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(lambda," = 1")), 
+       x = "n", y = "Type 1 error", color = "Test type\n") + 
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.1,0.85), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+plot1 <- ggplot(data1, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(lambda," = 1.1")), 
+       x = "n", y = "Power", color = "Test type\n") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8, 0.2), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+plot2 <- ggplot(data2, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(lambda," = 1.2")), 
+       x = "n", y = "Power", color = "Test type\n") + 
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8, 0.2), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+plot3 <- ggplot(data3, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(lambda," = 1.3")), 
+       x = "n", y = "Power", color = "Test type\n") + 
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8, 0.2), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+plot4 <- ggplot(data4, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(lambda," = 1.4")), 
+       x = "n", y = "Power", color = "Test type\n") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8, 0.2), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+plot5 <- ggplot(data5, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(lambda," = 1.5")), 
+       x = "n", y = "Power", color = "Test type\n") + 
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8, 0.2), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+plot6 <- ggplot(data6, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(lambda," = 1.6")), 
+       x = "n", y = "Power", color = "Test type\n") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8, 0.2), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+plot7 <- ggplot(data7, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(lambda," = 1.7")), 
+       x = "n", y = "Power", color = "Test type\n") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8, 0.2), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+plot8 <- ggplot(data8, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(lambda," = 1.8")), 
+       x = "n", y = "Power", color = "Test type\n") + 
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8, 0.2), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+plot9 <- ggplot(data9, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(lambda," = 1.9")), 
+       x = "n", y = "Power", color = "Test type\n") + 
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8, 0.2), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+plot0
+```
+
+Above is the power plot when $\lambda=1$, which is equivalent to Type I error rate. 
+
+```{r, fig.height=9, fig.width=12, message=FALSE, warning=FALSE}
+multiplot(plot1,plot4,plot7, plot2, plot5, plot8, plot3, plot6, plot9, cols = 3)
+```
+
+From the plot, we know that the power approaches to 1 **faster** when $\lambda$ gets larger. In general, t-test has stronger power than asymptotic Wilcox test. Then we create the power curves for different sample sizes from 20 to 100, with `step = 20`.
+
+```{r, echo=FALSE, fig.height=5, fig.width=12, message=FALSE, warning=FALSE}
+mydata1 = data.frame("lambda" = lambdavals, "power2" = powermatrix1[2, ],  "power4" = powermatrix1[4, ],
+                     "power6" = powermatrix1[6, ],  "power8" = powermatrix1[8, ], "power10" = powermatrix1[10, ])
+
+mydata2 = data.frame("lambda" = lambdavals, "power2" = powermatrix2[2, ],  "power4" = powermatrix2[4, ],
+                     "power6" = powermatrix2[6, ],  "power8" = powermatrix2[8, ], "power10" = powermatrix2[10, ])
+
+p1 <- ggplot(mydata1, aes(lambda)) + scale_x_continuous(breaks=seq(1, 1.9, 0.1), limits=c(1, 1.9)) +
+  geom_smooth(aes(y = power2, colour = "n = 20"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = power4, colour = "n = 40"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = power6, colour = "n = 60"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = power8, colour = "n = 80"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = power10, colour = "n = 100"), se = FALSE, size = 0.8) +
+  labs(title = "Power curves of different sample size for T test", 
+       x = expression(paste(lambda)), y = "Power", color = "Sample size\n") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.1,0.8), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+p2 <- ggplot(mydata1, aes(lambda)) + scale_x_continuous(breaks=seq(1, 1.9, 0.1), limits=c(1, 1.9)) +
+  geom_smooth(aes(y = power2, colour = "n = 20"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = power4, colour = "n = 40"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = power6, colour = "n = 60"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = power8, colour = "n = 80"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = power10, colour = "n = 100"), se = FALSE, size = 0.8) +
+  labs(title = "Power curves of different sample size for Wilcox test", 
+       x = expression(paste(lambda)), y = "Power", color = "Sample size\n") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.1,0.8), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+multiplot(p1, p2, cols = 2)
+```
+
+We notice when sample size is fixed, power increases as $\lambda$ gets larger.
+
+## (c) Chi-square Distribution
+
+Let $X\sim \chi^2(1)$ and $Y\sim \chi^2(\nu)$ for $0<\nu \le 1$, we know that $\mu_X=1,\mu_Y=\nu$. So we have 
+$$H_0:\nu=1 \quad H_a:\nu<1,$$
+which is equivalent to
+$$H_0:\mu_X=\mu_Y \quad H_a:\mu_X>\mu_Y$$
+
+**Type 1 Error Rate & Power Analysis**
+
+The simulation parameters are:
+
+- Significance level $\alpha = 0.05$
+- Difference $\nu$ ranges from 0.1 to 1 by 0.1 (when $\nu = 1$, Type I error rate)
+- Sample size $n$ ranges from 10 to 100 by 10
+- Replicates $m=500$
+- Two tests: T-test & Wilxon test (asymptotic)
+
+Since we stick to $m=500$ replicates as before, the bound for standard error is still `r bound`. We will not calculate se matrix again, the conclusions will be the same.
+
+```{r}
+alpha = 0.05
+nuvals = c(1:10)/10
+m = 500
+nvals = c(10, 20, 30, 40, 50, 60, 70, 80, 90, 100)
+powermatrix1 <- powermatrix2 <- matrix(0, 10, 10)
+
+function_c <- function(n, nu, alpha){
+  decisions_t <- decisions_asy <- numeric(m)
+  for (j in 1:m){
+    X = rchisq(n, 1)
+    Y = rchisq(n, nu)
+    # test decision is 1(reject) or 0
+    P.value1 = t.test(X, Y, alternative = "greater", var.equal = TRUE)$p.value
+    P.value2 = wilcox.test(X, Y, alternative = "greater", exact = FALSE)$p.value
+    decisions_t[j] = (P.value1 < alpha)
+    decisions_asy[j] = (P.value2 < alpha)
+  }
+  c(mean(decisions_t), mean(decisions_asy))
+}
+
+set.seed(27)
+for (i in 1:10){
+  n = nvals[i]
+
+  for (j in 1:10){
+    nu = nuvals[j]
+    powermatrix1[i,j] = function_c(n, nu, alpha)[1]
+    powermatrix2[i,j] = function_c(n, nu, alpha)[2]
+  }
+}
+
+colnames(powermatrix2) = c("0.1","0.2","0.3","0.4","0.5","0.6","0.7","0.8","0.9","1")
+rownames(powermatrix2) = c("n = 10","n = 20","n = 30","n = 40","n = 50",
+                          "n = 60","n = 70","n = 80","n = 90","n = 100")
+as.data.frame(powermatrix2)
+```
+
+Above is the power matrix for asymptotic Wilxon test. Then we create the power curves for different $\nu$ from 0.1 to 1, with `step = 0.1`.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+data0 = data.frame("n" = nvals, "T" = powermatrix1[ ,1], "W_asy" = powermatrix2[, 1])
+data1 = data.frame("n" = nvals, "T" = powermatrix1[ ,2], "W_asy" = powermatrix2[, 2])
+data2 = data.frame("n" = nvals, "T" = powermatrix1[ ,3], "W_asy" = powermatrix2[, 3])
+data3 = data.frame("n" = nvals, "T" = powermatrix1[ ,4], "W_asy" = powermatrix2[, 4])
+data4 = data.frame("n" = nvals, "T" = powermatrix1[ ,5], "W_asy" = powermatrix2[, 5])
+data5 = data.frame("n" = nvals, "T" = powermatrix1[ ,6], "W_asy" = powermatrix2[, 6])
+data6 = data.frame("n" = nvals, "T" = powermatrix1[ ,7], "W_asy" = powermatrix2[, 7])
+data7 = data.frame("n" = nvals, "T" = powermatrix1[ ,8], "W_asy" = powermatrix2[, 8])
+data8 = data.frame("n" = nvals, "T" = powermatrix1[ ,9], "W_asy" = powermatrix2[, 9])
+data9 = data.frame("n" = nvals, "T" = powermatrix1[ ,10], "W_asy" = powermatrix2[, 10])
+
+library(ggplot2)
+plot0 <- ggplot(data0, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) + 
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(nu," = 0.1")), 
+       x = "n", y = "Power", color = "Test type\n") + 
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8,0.2), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+plot1 <- ggplot(data1, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(nu," = 0.2")), 
+       x = "n", y = "Power", color = "Test type\n") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8, 0.2), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+plot2 <- ggplot(data2, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(nu," = 0.3")), 
+       x = "n", y = "Power", color = "Test type\n") + 
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8, 0.2), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+plot3 <- ggplot(data3, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(nu," = 0.4")), 
+       x = "n", y = "Power", color = "Test type\n") + 
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8, 0.2), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+plot4 <- ggplot(data4, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(nu," = 0.5")), 
+       x = "n", y = "Power", color = "Test type\n") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8, 0.2), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+plot5 <- ggplot(data5, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(nu," = 0.6")), 
+       x = "n", y = "Power", color = "Test type\n") + 
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8, 0.2), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+plot6 <- ggplot(data6, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(nu," = 0.7")), 
+       x = "n", y = "Power", color = "Test type\n") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8, 0.2), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+plot7 <- ggplot(data7, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(nu," = 0.8")), 
+       x = "n", y = "Power", color = "Test type\n") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8, 0.2), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+plot8 <- ggplot(data8, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(nu," = 0.9")), 
+       x = "n", y = "Power", color = "Test type\n") + 
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8, 0.2), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+plot9 <- ggplot(data9, aes(n)) + scale_x_continuous(breaks = seq(10, 100, 10), limits = c(10, 100)) +
+  geom_smooth(aes(y = T, colour = "T test"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = W_asy, colour = "Wilcox test"), se = FALSE, size = 0.8) +
+  labs(title = expression(paste(nu," = 1")), 
+       x = "n", y = "Type 1 error", color = "Test type\n") + 
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.1, 0.85), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+plot9
+```
+
+Above is the power plot when $\nu=1$, which is equivalent to Type I error rate. 
+
+```{r, fig.height=9, fig.width=12, message=FALSE, warning=FALSE}
+multiplot(plot0,plot3,plot6, plot1, plot4, plot7, plot2, plot5, plot8, cols = 3)
+```
+
+From the plot, we know that the power approaches to 1 **faster** when $\nu$ gets closer to 0. In general, asymptotic Wilcox test has stronger power than t test.
+
+Then we create the power curves for different sample sizes from 20 to 100, with `step = 20`.
+
+```{r, fig.height=5, fig.width=12, message=FALSE, warning=FALSE}
+mydata1 = data.frame("nu" = nuvals, "power2" = powermatrix1[2, ],  "power4" = powermatrix1[4, ],
+                     "power6" = powermatrix1[6, ],  "power8" = powermatrix1[8, ], "power10" = powermatrix1[10, ])
+
+mydata2 = data.frame("nu" = nuvals, "power2" = powermatrix2[2, ],  "power4" = powermatrix2[4, ],
+                     "power6" = powermatrix2[6, ],  "power8" = powermatrix2[8, ], "power10" = powermatrix2[10, ])
+
+p1 <- ggplot(mydata1, aes(nu)) + scale_x_continuous(breaks=seq(0.1, 1, 0.1), limits=c(0.1, 1)) +
+  geom_smooth(aes(y = power2, colour = "n = 20"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = power4, colour = "n = 40"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = power6, colour = "n = 60"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = power8, colour = "n = 80"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = power10, colour = "n = 100"), se = FALSE, size = 0.8) +
+  labs(title = "Power curves of different sample size for T test", 
+       x = expression(paste(nu)), y = "Power", color = "Sample size\n") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8,0.8), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+p2 <- ggplot(mydata1, aes(nu)) + scale_x_continuous(breaks=seq(0.1, 1, 0.1), limits=c(0.1, 1)) +
+  geom_smooth(aes(y = power2, colour = "n = 20"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = power4, colour = "n = 40"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = power6, colour = "n = 60"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = power8, colour = "n = 80"), se = FALSE, size = 0.8) +
+  geom_smooth(aes(y = power10, colour = "n = 100"), se = FALSE, size = 0.8) +
+  labs(title = "Power curves of different sample size for Wilcox test", 
+       x = expression(paste(nu)), y = "Power", color = "Sample size\n") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = c(0.8, 0.8), legend.background = element_rect(fill = "transparent")) + scale_colour_brewer(palette = "Set2")
+
+multiplot(p1, p2, cols = 2)
+```
+
+From the plot, we notice that for a fixed sample size, a test for distribution with parameter $\nu$ closer to 0 will have stronger test power.
+
+# Problem 2 Comparison of Confidence Intervals
+
+## (a) Standard Normal Bootstrap Interval
+
+We want to verify that our standard error for the coverage probability estimates is under 0.005, where 
+$$\hat{se}(\hat{p})=\sqrt{\hat{p}(1-\hat{p})}\le \frac{1}{2\sqrt{m}}$$,
+where m is the number of replicates. In order to achieve this, m should be no less than 3600, we set m as 5000.
+
+```{r, message=FALSE, warning=FALSE}
+alpha = 0.1
+M = 5000 # number of replicates
+nvals = c(20, 50, 100)
+CI1 <- CI2 <- CI3 <- CI4 <- U1 <- U2 <- U3 <- U4 <- L1 <- L2 <- L3 <- L4 <- numeric(M)
+
+ML1 <- ML2 <- ML3 <- ML4 <- rep(0, length(nvals))
+CP1 <- CP2 <- CP3 <- CP4 <- rep(0, length(nvals))
+SE1 <- SE2 <- SE3 <- SE4 <- rep(0, length(nvals))
+
+set.seed(27)
+for (k in 1:length(nvals)){
+  n = nvals[k]
+  
+  for (m in 1:M){
+    X1 = rnorm(n, 0, 1)
+    X2 = rexp(n, rate = 1)
+    X3 = rcauchy(n)
+    X4 = runif(n, 0, 1)
+    
+    T1 = median(X1)
+    T2 = median(X2)
+    T3 = median(X3)
+    T4 = median(X4)
+    
+    B = 100
+    Tboot1 <- Tboot2 <- Tboot3 <- Tboot4 <- numeric(B)
+    
+    for (b in 1:B){
+      xb1 = sample(X1, n, replace = TRUE)
+      xb2 = sample(X2, n, replace = TRUE)
+      xb3 = sample(X3, n, replace = TRUE)
+      xb4 = sample(X4, n, replace = TRUE)
+      Tboot1[b] = median(xb1)
+      Tboot2[b] = median(xb2)
+      Tboot3[b] = median(xb3)
+      Tboot4[b] = median(xb4)
+    }
+    
+  U1[m] = T1 + qnorm(1- alpha/2, 0, 1)*sd(Tboot1)
+  L1[m] = T1 - qnorm(1- alpha/2, 0, 1)*sd(Tboot1)
+  CI1[m] = ((L1[m] <= qnorm(0.5)) & (U1[m] >= qnorm(0.5)))
+  U2[m] = T2 + qnorm(1- alpha/2, 0, 1)*sd(Tboot2)
+  L2[m] = T2 - qnorm(1- alpha/2, 0, 1)*sd(Tboot2)
+  CI2[m] = ((L2[m] <= qexp(0.5)) & (U2[m] >= qexp(0.5)))
+  U3[m] = T3 + qnorm(1- alpha/2, 0, 1)*sd(Tboot3)
+  L3[m] = T3 - qnorm(1- alpha/2, 0, 1)*sd(Tboot3)
+  CI3[m] = ((L3[m] <= qcauchy(0.5)) & (U3[m] >= qcauchy(0.5)))
+  U4[m] = T4 + qnorm(1- alpha/2, 0, 1)*sd(Tboot4)
+  L4[m] = T4 - qnorm(1- alpha/2, 0, 1)*sd(Tboot4)
+  CI4[m] = ((L4[m] <= qunif(0.5)) & (U4[m] >= qunif(0.5)))
+  }
+  
+  CP1[k] = round(mean(CI1),3)
+  CP2[k] = round(mean(CI2),3)
+  CP3[k] = round(mean(CI3),3)
+  CP4[k] = round(mean(CI4),3)
+  ML1[k] = round(mean(U1 - L1),3)
+  ML2[k] = round(mean(U2 - L2),3)
+  ML3[k] = round(mean(U3 - L3),3)
+  ML4[k] = round(mean(U4 - L4),3)
+  
+  options(scipen=999)
+  SE1[k] = round(sqrt(CP1[k]*(1-CP1[k])/M),6)
+  SE2[k] = round(sqrt(CP2[k]*(1-CP2[k])/M),6)
+  SE3[k] = round(sqrt(CP3[k]*(1-CP3[k])/M),6)
+  SE4[k] = round(sqrt(CP4[k]*(1-CP4[k])/M),6)
+}
+```
+
+We summerize the result into the following two tables.
+
+| Distribution    | `n = 20`   | `n = 50`   | `n = 100`  |
+|:---------------:|:----------:|:----------:|:----------:|
+| `N(0,1)`        | `r CP1[1]` | `r CP1[2]` | `r CP1[3]` |
+| `Exponential(1)`| `r CP2[1]` | `r CP2[2]` | `r CP2[3]` |
+| `Cauchy`        | `r CP3[1]` | `r CP3[2]` | `r CP3[3]` |
+| `Uniform(0,1)`  | `r CP4[1]` | `r CP4[2]` | `r CP4[3]` |
+
+Table: Coverage probabilities
+
+| Distribution    | `n = 20`   | `n = 50`   | `n = 100`  |
+|:---------------:|:----------:|:----------:|:----------:|
+| `N(0,1)`        | `r ML1[1]` | `r ML1[2]` | `r ML1[3]` |
+| `Exponential(1)`| `r ML2[1]` | `r ML2[2]` | `r ML2[3]` |
+| `Cauchy`        | `r ML3[1]` | `r ML3[2]` | `r ML3[3]` |
+| `Uniform(0,1)`  | `r ML4[1]` | `r ML4[2]` | `r ML4[3]` |
+
+Table: Mean lengths of intervals
+
+Then we want to show that the `standard error` for the coverage probability estimates is under 0.005 with the following table.
+
+| Distribution    | `n = 20`   | `n = 50`   | `n = 100`  |
+|:---------------:|:----------:|:----------:|:----------:|
+| `N(0,1)`        | `r SE1[1]` | `r SE1[2]` | `r SE1[3]` |
+| `Exponential(1)`| `r SE2[1]` | `r SE2[2]` | `r SE2[3]` |
+| `Cauchy`        | `r SE3[1]` | `r SE3[2]` | `r SE3[3]` |
+| `Uniform(0,1)`  | `r SE4[1]` | `r SE4[2]` | `r SE4[3]` |
+
+Table: Standard error for the coverage probabability estimates
+
+From the table above, we know that all the standard errors for coverage probability estimates are under or very close to 0.005, due to randomness.
+
+
+## (b) Percentile Bootstrap Confidence Intervals
+
+```{r, message=FALSE, warning=FALSE}
+M = 5000 # number of replicates
+nvals = c(20, 50, 100)
+CI1 <- CI2 <- CI3 <- CI4 <- U1 <- U2 <- U3 <- U4 <- L1 <- L2 <- L3 <- L4 <- numeric(M)
+
+ML1 <- ML2 <- ML3 <- ML4 <- rep(0, length(nvals))
+CP1 <- CP2 <- CP3 <- CP4 <- rep(0, length(nvals))
+SE1 <- SE2 <- SE3 <- SE4 <- rep(0, length(nvals))
+
+set.seed(27)
+for (k in 1:length(nvals)){
+  n = nvals[k]
+  
+  for (m in 1:M){
+    X1 = rnorm(n, 0, 1)
+    X2 = rexp(n, rate = 1)
+    X3 = rcauchy(n)
+    X4 = runif(n, 0, 1)
+    
+    T1 = median(X1)
+    T2 = median(X2)
+    T3 = median(X3)
+    T4 = median(X4)
+    
+    B = 100
+    Tboot1 <- Tboot2 <- Tboot3 <- Tboot4 <- numeric(B)
+    
+    for (b in 1:B){
+      xb1 = sample(X1, n, replace = TRUE)
+      xb2 = sample(X2, n, replace = TRUE)
+      xb3 = sample(X3, n, replace = TRUE)
+      xb4 = sample(X4, n, replace = TRUE)
+      Tboot1[b] = median(xb1)
+      Tboot2[b] = median(xb2)
+      Tboot3[b] = median(xb3)
+      Tboot4[b] = median(xb4)
+    }
+    L1[m] = sort(Tboot1)[5]
+    U1[m] = sort(Tboot1)[95]
+    L2[m] = sort(Tboot2)[5]
+    U2[m] = sort(Tboot2)[95]
+    L3[m] = sort(Tboot3)[5]
+    U3[m] = sort(Tboot3)[95]
+    L4[m] = sort(Tboot4)[5]
+    U4[m] = sort(Tboot4)[95]
+    
+    CI1[m] = ((L1[m] <= qnorm(0.5)) & (U1[m] >= qnorm(0.5)))
+    CI2[m] = ((L2[m] <= qexp(0.5)) & (U2[m] >= qexp(0.5)))
+    CI3[m] = ((L3[m] <= qcauchy(0.5)) & (U3[m] >= qcauchy(0.5)))
+    CI4[m] = ((L4[m] <= qunif(0.5)) & (U4[m] >= qunif(0.5)))
+  }
+  
+  CP1[k] = round(mean(CI1),3)
+  CP2[k] = round(mean(CI2),3)
+  CP3[k] = round(mean(CI3),3)
+  CP4[k] = round(mean(CI4),3)
+  ML1[k] = round(mean(U1 - L1),3)
+  ML2[k] = round(mean(U2 - L2),3)
+  ML3[k] = round(mean(U3 - L3),3)
+  ML4[k] = round(mean(U4 - L4),3)
+  
+  options(scipen=999)
+  SE1[k] = round(sqrt(CP1[k]*(1-CP1[k])/M),6)
+  SE2[k] = round(sqrt(CP2[k]*(1-CP2[k])/M),6)
+  SE3[k] = round(sqrt(CP3[k]*(1-CP3[k])/M),6)
+  SE4[k] = round(sqrt(CP4[k]*(1-CP4[k])/M),6)
+}
+```
+
+We summerize the result into the following two tables.
+
+| Distribution    | `n = 20`   | `n = 50`   | `n = 100`  |
+|:---------------:|:----------:|:----------:|:----------:|
+| `N(0,1)`        | `r CP1[1]` | `r CP1[2]` | `r CP1[3]` |
+| `Exponential(1)`| `r CP2[1]` | `r CP2[2]` | `r CP2[3]` |
+| `Cauchy`        | `r CP3[1]` | `r CP3[2]` | `r CP3[3]` |
+| `Uniform(0,1)`  | `r CP4[1]` | `r CP4[2]` | `r CP4[3]` |
+
+Table: Coverage probabilities
+
+| Distribution    | `n = 20`   | `n = 50`   | `n = 100`  |
+|:---------------:|:----------:|:----------:|:----------:|
+| `N(0,1)`        | `r ML1[1]` | `r ML1[2]` | `r ML1[3]` |
+| `Exponential(1)`| `r ML2[1]` | `r ML2[2]` | `r ML2[3]` |
+| `Cauchy`        | `r ML3[1]` | `r ML3[2]` | `r ML3[3]` |
+| `Uniform(0,1)`  | `r ML4[1]` | `r ML4[2]` | `r ML4[3]` |
+
+Table: Mean lengths of intervals
+
+Then we want to show that the `standard error` for the coverage probability estimates is under 0.005 with the following table.
+
+| Distribution    | `n = 20`   | `n = 50`   | `n = 100`  |
+|:---------------:|:----------:|:----------:|:----------:|
+| `N(0,1)`        | `r SE1[1]` | `r SE1[2]` | `r SE1[3]` |
+| `Exponential(1)`| `r SE2[1]` | `r SE2[2]` | `r SE2[3]` |
+| `Cauchy`        | `r SE3[1]` | `r SE3[2]` | `r SE3[3]` |
+| `Uniform(0,1)`  | `r SE4[1]` | `r SE4[2]` | `r SE4[3]` |
+
+Table: Standard error for the coverage probabability estimates
+
+From the table above, we know that all the standard errors for coverage probability estimates are under or very close to 0.005, due to randomness.
+
+## (c) Conclusion
+I don't see a significant difference in terms of coverage probabilities and mean lengths of intervals between two methods. If there is, it seems that the second method (percentile bootstrap) performs slightly better.

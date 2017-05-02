@@ -1,0 +1,222 @@
+---
+title: "problem2"
+author: "Yiming Gao (yimingg2)"
+date: "2017/2/18"
+output: html_document
+---
+# Problem 2 Comparison of Confidence Intervals
+
+## Method 1 Standard Normal Bootstrap Interval
+
+We want to verify that our standard error for the coverage probability estimates is under 0.005, where 
+$$\hat{se}(\hat{p})=\sqrt{\hat{p}(1-\hat{p})}\le \frac{1}{2\sqrt{m}}$$,
+where m is the number of replicates. In order to achieve this, m should be no less than 3600, we set m as 4000.
+
+```{r, message=FALSE, warning=FALSE}
+alpha = 0.1
+M = 4000 # number of replicates
+nvals = c(20, 50, 100)
+CI1 <- CI2 <- CI3 <- CI4 <- U1 <- U2 <- U3 <- U4 <- L1 <- L2 <- L3 <- L4 <- numeric(M)
+
+ML1 <- ML2 <- ML3 <- ML4 <- rep(0, length(nvals))
+CP1 <- CP2 <- CP3 <- CP4 <- rep(0, length(nvals))
+SE1 <- SE2 <- SE3 <- SE4 <- rep(0, length(nvals))
+
+for (k in 1:length(nvals)){
+  n = nvals[k]
+  
+  for (m in 1:M){
+    X1 = rnorm(n, 0, 1)
+    X2 = rexp(n, rate = 1)
+    X3 = rcauchy(n)
+    X4 = runif(n, 0, 1)
+    
+    T1 = median(X1)
+    T2 = median(X2)
+    T3 = median(X3)
+    T4 = median(X4)
+    
+    B = 100
+    Tboot1 <- Tboot2 <- Tboot3 <- Tboot4 <- numeric(B)
+    
+    for (b in 1:B){
+      xb1 = sample(X1, n, replace = TRUE)
+      xb2 = sample(X2, n, replace = TRUE)
+      xb3 = sample(X3, n, replace = TRUE)
+      xb4 = sample(X4, n, replace = TRUE)
+      Tboot1[b] = median(xb1)
+      Tboot2[b] = median(xb2)
+      Tboot3[b] = median(xb3)
+      Tboot4[b] = median(xb4)
+    }
+    
+  U1[m] = T1 + qnorm(1- alpha/2, 0, 1)*sd(Tboot1)
+  L1[m] = T1 - qnorm(1- alpha/2, 0, 1)*sd(Tboot1)
+  CI1[m] = ((L1[m] <= qnorm(0.5)) & (U1[m] >= qnorm(0.5)))
+  U2[m] = T2 + qnorm(1- alpha/2, 0, 1)*sd(Tboot2)
+  L2[m] = T2 - qnorm(1- alpha/2, 0, 1)*sd(Tboot2)
+  CI2[m] = ((L2[m] <= qexp(0.5)) & (U2[m] >= qexp(0.5)))
+  U3[m] = T3 + qnorm(1- alpha/2, 0, 1)*sd(Tboot3)
+  L3[m] = T3 - qnorm(1- alpha/2, 0, 1)*sd(Tboot3)
+  CI3[m] = ((L3[m] <= qcauchy(0.5)) & (U3[m] >= qcauchy(0.5)))
+  U4[m] = T4 + qnorm(1- alpha/2, 0, 1)*sd(Tboot4)
+  L4[m] = T4 - qnorm(1- alpha/2, 0, 1)*sd(Tboot4)
+  CI4[m] = ((L4[m] <= qunif(0.5)) & (U4[m] >= qunif(0.5)))
+  }
+  
+  CP1[k] = round(mean(CI1),3)
+  CP2[k] = round(mean(CI2),3)
+  CP3[k] = round(mean(CI3),3)
+  CP4[k] = round(mean(CI4),3)
+  ML1[k] = round(mean(U1 - L1),3)
+  ML2[k] = round(mean(U2 - L2),3)
+  ML3[k] = round(mean(U3 - L3),3)
+  ML4[k] = round(mean(U4 - L4),3)
+  
+  options(scipen=999)
+  SE1[k] = round(sqrt(CP1[k]*(1-CP1[k])/M),6)
+  SE2[k] = round(sqrt(CP2[k]*(1-CP2[k])/M),6)
+  SE3[k] = round(sqrt(CP3[k]*(1-CP3[k])/M),6)
+  SE4[k] = round(sqrt(CP4[k]*(1-CP4[k])/M),6)
+}
+```
+
+We summerize the result into the following two tables.
+
+| Distribution    | `n = 20`   | `n = 50`   | `n = 100`  |
+|:---------------:|:----------:|:----------:|:----------:|
+| `N(0,1)`        | `r CP1[1]` | `r CP1[2]` | `r CP1[3]` |
+| `Exponential(1)`| `r CP2[1]` | `r CP2[2]` | `r CP2[3]` |
+| `Cauchy`        | `r CP3[1]` | `r CP3[2]` | `r CP3[3]` |
+| `Uniform(0,1)`  | `r CP4[1]` | `r CP4[2]` | `r CP4[3]` |
+
+Table: Coverage probabilities
+
+| Distribution    | `n = 20`   | `n = 50`   | `n = 100`  |
+|:---------------:|:----------:|:----------:|:----------:|
+| `N(0,1)`        | `r ML1[1]` | `r ML1[2]` | `r ML1[3]` |
+| `Exponential(1)`| `r ML2[1]` | `r ML2[2]` | `r ML2[3]` |
+| `Cauchy`        | `r ML3[1]` | `r ML3[2]` | `r ML3[3]` |
+| `Uniform(0,1)`  | `r ML4[1]` | `r ML4[2]` | `r ML4[3]` |
+
+Table: Mean lengths of intervals
+
+Then we want to show that the `standard error` for the coverage probability estimates is under 0.005 with the following table.
+
+| Distribution    | `n = 20`   | `n = 50`   | `n = 100`  |
+|:---------------:|:----------:|:----------:|:----------:|
+| `N(0,1)`        | `r SE1[1]` | `r SE1[2]` | `r SE1[3]` |
+| `Exponential(1)`| `r SE2[1]` | `r SE2[2]` | `r SE2[3]` |
+| `Cauchy`        | `r SE3[1]` | `r SE3[2]` | `r SE3[3]` |
+| `Uniform(0,1)`  | `r SE4[1]` | `r SE4[2]` | `r SE4[3]` |
+
+Table: Standard error for the coverage probabability estimates
+
+From the table above, we know that all the standard errors for coverage probability estimates are under 0.005.
+
+
+## Percentile Bootstrap Confidence Intervals
+
+```{r, message=FALSE, warning=FALSE}
+M = 4000 # number of replicates
+nvals = c(20, 50, 100)
+CI1 <- CI2 <- CI3 <- CI4 <- U1 <- U2 <- U3 <- U4 <- L1 <- L2 <- L3 <- L4 <- numeric(M)
+
+ML1 <- ML2 <- ML3 <- ML4 <- rep(0, length(nvals))
+CP1 <- CP2 <- CP3 <- CP4 <- rep(0, length(nvals))
+SE1 <- SE2 <- SE3 <- SE4 <- rep(0, length(nvals))
+
+for (k in 1:length(nvals)){
+  n = nvals[k]
+  
+  for (m in 1:M){
+    X1 = rnorm(n, 0, 1)
+    X2 = rexp(n, rate = 1)
+    X3 = rcauchy(n)
+    X4 = runif(n, 0, 1)
+    
+    T1 = median(X1)
+    T2 = median(X2)
+    T3 = median(X3)
+    T4 = median(X4)
+    
+    B = 100
+    Tboot1 <- Tboot2 <- Tboot3 <- Tboot4 <- numeric(B)
+    
+    for (b in 1:B){
+      xb1 = sample(X1, n, replace = TRUE)
+      xb2 = sample(X2, n, replace = TRUE)
+      xb3 = sample(X3, n, replace = TRUE)
+      xb4 = sample(X4, n, replace = TRUE)
+      Tboot1[b] = median(xb1)
+      Tboot2[b] = median(xb2)
+      Tboot3[b] = median(xb3)
+      Tboot4[b] = median(xb4)
+    }
+    L1[m] = sort(Tboot1)[5]
+    U1[m] = sort(Tboot1)[95]
+    L2[m] = sort(Tboot2)[5]
+    U2[m] = sort(Tboot2)[95]
+    L3[m] = sort(Tboot3)[5]
+    U3[m] = sort(Tboot3)[95]
+    L4[m] = sort(Tboot4)[5]
+    U4[m] = sort(Tboot4)[95]
+    
+    CI1[m] = ((L1[m] <= qnorm(0.5)) & (U1[m] >= qnorm(0.5)))
+    CI2[m] = ((L2[m] <= qexp(0.5)) & (U2[m] >= qexp(0.5)))
+    CI3[m] = ((L3[m] <= qcauchy(0.5)) & (U3[m] >= qcauchy(0.5)))
+    CI4[m] = ((L4[m] <= qunif(0.5)) & (U4[m] >= qunif(0.5)))
+  }
+  
+  CP1[k] = round(mean(CI1),3)
+  CP2[k] = round(mean(CI2),3)
+  CP3[k] = round(mean(CI3),3)
+  CP4[k] = round(mean(CI4),3)
+  ML1[k] = round(mean(U1 - L1),3)
+  ML2[k] = round(mean(U2 - L2),3)
+  ML3[k] = round(mean(U3 - L3),3)
+  ML4[k] = round(mean(U4 - L4),3)
+  
+  options(scipen=999)
+  SE1[k] = round(sqrt(CP1[k]*(1-CP1[k])/M),6)
+  SE2[k] = round(sqrt(CP2[k]*(1-CP2[k])/M),6)
+  SE3[k] = round(sqrt(CP3[k]*(1-CP3[k])/M),6)
+  SE4[k] = round(sqrt(CP4[k]*(1-CP4[k])/M),6)
+}
+```
+
+We summerize the result into the following two tables.
+
+| Distribution    | `n = 20`   | `n = 50`   | `n = 100`  |
+|:---------------:|:----------:|:----------:|:----------:|
+| `N(0,1)`        | `r CP1[1]` | `r CP1[2]` | `r CP1[3]` |
+| `Exponential(1)`| `r CP2[1]` | `r CP2[2]` | `r CP2[3]` |
+| `Cauchy`        | `r CP3[1]` | `r CP3[2]` | `r CP3[3]` |
+| `Uniform(0,1)`  | `r CP4[1]` | `r CP4[2]` | `r CP4[3]` |
+
+Table: Coverage probabilities
+
+| Distribution    | `n = 20`   | `n = 50`   | `n = 100`  |
+|:---------------:|:----------:|:----------:|:----------:|
+| `N(0,1)`        | `r ML1[1]` | `r ML1[2]` | `r ML1[3]` |
+| `Exponential(1)`| `r ML2[1]` | `r ML2[2]` | `r ML2[3]` |
+| `Cauchy`        | `r ML3[1]` | `r ML3[2]` | `r ML3[3]` |
+| `Uniform(0,1)`  | `r ML4[1]` | `r ML4[2]` | `r ML4[3]` |
+
+Table: Mean lengths of intervals
+
+Then we want to show that the `standard error` for the coverage probability estimates is under 0.005 with the following table.
+
+| Distribution    | `n = 20`   | `n = 50`   | `n = 100`  |
+|:---------------:|:----------:|:----------:|:----------:|
+| `N(0,1)`        | `r SE1[1]` | `r SE1[2]` | `r SE1[3]` |
+| `Exponential(1)`| `r SE2[1]` | `r SE2[2]` | `r SE2[3]` |
+| `Cauchy`        | `r SE3[1]` | `r SE3[2]` | `r SE3[3]` |
+| `Uniform(0,1)`  | `r SE4[1]` | `r SE4[2]` | `r SE4[3]` |
+
+Table: Standard error for the coverage probabability estimates
+
+From the table above, we know that all the standard errors for coverage probability estimates are under 0.005.
+
+## Conclusions
+I don't see a significant difference in terms of coverage probabilities and mean lengths of intervals between two methods. If there is, it seems that the second method (percentile bootstrap) performs slightly better.
