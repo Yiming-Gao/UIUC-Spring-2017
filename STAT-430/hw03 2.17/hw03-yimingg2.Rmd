@@ -1,0 +1,314 @@
+---
+title: "Homework 3"
+author: 'Yiming Gao (NetID: yimingg2)'
+date: "2017/2/12"
+output:
+  html_document:
+    theme: readable
+    toc: yes
+  pdf_document:
+    toc: yes
+linestretch: 1.2
+---
+
+# Exercise 1
+## Linear Regression
+**(a) Plot the training data**
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+library(ISLR)
+library(tibble)
+library(readr)
+library(Metrics)
+library(caret)
+#?Auto
+auto_train_data = read_csv("auto-train.csv")
+auto_test_data = read_csv("auto-test.csv")
+```
+
+```{r}
+# create the linear model
+model_lm = lm(mpg ~ displacement, data = auto_train_data)
+```
+
+Then we plot the training data and add a line with the predicted probabilities. The dash line is $mpg = 0.5$.
+```{r, fig.align ='center'}
+library(ggplot2)
+mydata1 = data.frame("displacement" = auto_train_data$displacement, "mpg" = auto_train_data$mpg)
+
+ggplot(mydata1, aes(displacement, mpg))+
+  # use colors based on the response category
+  geom_point(aes(colour = factor(mpg)))+
+  geom_smooth(method = "lm", se = FALSE, colour = "dodgerblue") + 
+  geom_hline(yintercept = 0.5, linetype = 2, colour = "dodgerblue") +
+  labs(title = "Linear Regression", 
+       x = "displacement", y = "mpg", color = "mpg\n") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+**(b) Find the decision boundary**
+
+We want to find the decision boundary $c$ such that
+$$
+\hat{C}(\text{displacement}) = 
+\begin{cases} 
+      0 & \text{displacement} > c \\
+      1 & \text{displacement} \leq c 
+   \end{cases}
+$$
+Since `mpg` and `displacement` has linear relationship:
+```{r}
+model_lm$coefficients
+```
+
+$$
+mpg = 1.215 -0.0036*displacement
+$$
+When prediction of `mpg` is greater than $0.5$, than we classify it into **one**, otherwise, we classify it into **zero**. When $mpg = 0.5$, we have $displacement = 196.9697$. So we let $c = 196$, i.e.
+
+$$
+\hat{C}(\text{displacement}) = 
+\begin{cases} 
+      0 & \text{displacement} > 196 \\
+      1 & \text{displacement} \leq 196 
+   \end{cases}
+$$
+
+**(c) Find the test accuracy**
+
+We have
+
+- `Test Accuracy` = 0.913
+```{r}
+# obtain the predicted probabilities
+lm_test_pred = ifelse(predict(model_lm, newdata = auto_test_data, 
+                                   type = "response") > 0.5, 1, 0)
+# linear model test accuracy
+lm_test_accuracy = mean(lm_test_pred == auto_test_data$mpg) # 0.913
+lm_test_accuracy
+```
+
+## Logistic Regression
+**(a) Plot the training data**
+
+First we create a logistic model with response `mpg` and the only predictor `displacement`, and plot the training data as well as the curve with the predicted probabilities.
+
+```{r}
+# create the logistic regression model
+model_log = glm(mpg ~ displacement, data = auto_train_data, family = "binomial")
+```
+
+```{r, fig.align ='center'}
+ggplot(mydata1, aes(displacement, mpg))+
+  # use colors based on the response category
+  geom_point(aes(colour = factor(mpg)))+
+  stat_smooth(method = "glm",method.args=list(family="binomial"), 
+              colour = "dodgerblue", se = F) + 
+  geom_hline(yintercept = 0.5, linetype = 2, colour = "dodgerblue") +
+  labs(title = "Logistic Regression", 
+       x = "displacement", y = "mpg", color = "mpg\n") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+**(b) Find the decision boundary**
+
+We let $\hat{\beta_0} + \hat{\beta_1}*displacement = 0$, where $\hat{\beta_0}$ and $\hat{\beta_1}$ are given by:
+```{r}
+coef(model_log)[1]
+coef(model_log)[2]
+```
+Thus $c = -\frac{\hat{\beta_0}}{\hat{\beta_1}}=\frac{5.485}{0.0314}=174.7747$. So we let $c = 174$, i.e.
+
+$$
+\hat{C}(\text{displacement}) = 
+\begin{cases} 
+      0 & \text{displacement} > 174 \\
+      1 & \text{displacement} \leq 174 
+   \end{cases}
+$$ 
+
+**(c) Find the test accuracy**
+
+We have
+
+- `Test Accuracy` = 0.913
+```{r}
+# obtain the predicted probabilities
+log_test_pred = ifelse(predict.glm(model_log, newdata = auto_test_data, 
+                                   type = "response") > 0.5, 1, 0)
+# linear model test accuracy
+log_test_accuracy = mean(log_test_pred == auto_test_data$mpg) # 0.913
+log_test_accuracy
+```
+
+? So they have same accuracy?
+
+
+# Exercise 2
+**(a)**
+
+First we fit the logistic regression model with two predictor `acceleration` and `weight`.
+
+```{r}
+# create the logistic regression model
+model_log2 = glm(mpg ~ acceleration + weight, 
+                 data = auto_train_data, family = "binomial")
+```
+
+We want to calculate the decision boundary, which is the line performing 
+$$
+\hat{C(x)} = 
+\begin{cases} 
+      1 &  \hat{f}(x)>0 \\
+      0 &  \hat{f}(x) \leq 0
+   \end{cases}
+$$ 
+where
+$$
+\hat{f}(x) = \hat{\beta_0}+\hat{\beta_1}*acceleration+\hat{\beta_2}*weight
+$$
+
+We solve 
+$$
+\hat{\beta_0}+\hat{\beta_1}*acceleration+\hat{\beta_2}*weight=0
+$$ 
+and get
+
+$$
+weight = -\frac{\hat{\beta_0}}{\hat{\beta_2}}-\frac{\hat{\beta_1}}{\hat{\beta_2}}*acceleration
+$$
+where $\hat{\beta_0}$ is the intercept, $\hat{\beta_1}$ and $\hat{\beta_2}$ are the corresponding coefficients for `acceleration` and `weight`.
+
+```{r}
+mydata2 = data.frame("acceleration" = auto_train_data$acceleration, "weight" = auto_train_data$weight, "mpg" = auto_train_data$mpg)
+
+ggplot(mydata2, aes(acceleration, weight))+
+  # use colors based on the response category
+  geom_point(aes(colour = factor(mpg)))+
+  geom_abline(intercept = (- coef(model_log2)[1])/ (coef(model_log2)[3]),
+              slope = - coef(model_log2)[2]/( coef(model_log2)[3]),
+              colour = "dodgerblue", lwd = 1.1) +
+  labs(x = "acceleration", y = "weight", color = "mpg\n")
+```
+
+We can see that the decision boundary separate out most of the red and blue points, which means our classifier works well.
+
+**(b)**
+
+Report test sensitivity, test specificity, and test accuracy for three classifiers, each using a different cutoff for predicted probability:
+
+- 0.2
+- 0.5
+- 0.8
+    
+    
+```{r}
+get_pred = function(mod, data, res = "y", pos = 1, neg = 0, cut = 0.5) {
+  probs = predict(mod, newdata = data, type = "response")
+  ifelse(probs > cut, pos, neg)
+}
+
+test_pred_20 = get_pred(model_log2, data = auto_test_data, res = "default", pos = "1", neg = "0", cut = 0.2)
+test_pred_50 = get_pred(model_log2, data = auto_test_data, res = "default", pos = "1", neg = "0", cut = 0.5)
+test_pred_80 = get_pred(model_log2, data = auto_test_data, res = "default", pos = "1", neg = "0", cut = 0.8)
+
+# confusion matrix
+test_tab_20 = table(predicted = test_pred_20, actual = auto_test_data$mpg)
+test_tab_50 = table(predicted = test_pred_50, actual = auto_test_data$mpg)
+test_tab_80 = table(predicted = test_pred_80, actual = auto_test_data$mpg)
+
+test_con_mat_20 = confusionMatrix(test_tab_20, positive = "1")
+test_con_mat_50 = confusionMatrix(test_tab_50, positive = "1")
+test_con_mat_80 = confusionMatrix(test_tab_80, positive = "1")
+
+metrics = rbind(
+  
+  c(test_con_mat_20$overall["Accuracy"], 
+    test_con_mat_20$byClass["Sensitivity"], 
+    test_con_mat_20$byClass["Specificity"]),
+  
+  c(test_con_mat_50$overall["Accuracy"], 
+    test_con_mat_50$byClass["Sensitivity"], 
+    test_con_mat_50$byClass["Specificity"]),
+  
+  c(test_con_mat_80$overall["Accuracy"], 
+    test_con_mat_80$byClass["Sensitivity"], 
+    test_con_mat_80$byClass["Specificity"])
+
+)
+
+rownames(metrics) = c("c = 0.20", "c = 0.50", "c = 0.80")
+round(metrics, 3)
+```
+
+**(c)**
+
+- Plot an ROC curve and report the AUC.
+
+```{r, message=FALSE, warning=FALSE}
+library(pROC)
+test_prob = predict(model_log2, newdata = auto_test_data, type = "response")
+test_roc = roc(auto_test_data$mpg ~ test_prob, plot = TRUE, print.auc = TRUE)
+```
+
+```{r}
+as.numeric(test_roc$auc)
+```
+
+This model has a high $AUC = 0.965$
+
+
+# Exercise 3
+
+Finally we consider the full model and a reduced, improved model.
+
+- Full model: `mpg ~ cylinders + displacement + horsepower + weight + acceleration + year`
+
+- Improved model: `mpg ~ weight + year + horsepower + I(weight^2) + I(year^2)`
+
+We also compare relevant metrics for full model and improved model. The `accuracy` increases from 0.924 to 0.946, `sensitivity` stays the same as 0.976, and `specificity` increases from 0.88 to 0.92. Notice that the overall performance is better than the `full model`. Then we calculate their AUC, respectively.
+
+```{r}
+full_model = glm(mpg ~ ., data = auto_train_data, family = "binomial")
+reduced_model = glm(mpg ~ weight + year + horsepower + I(weight^2) + I(year^2), data = auto_train_data, family = "binomial")
+
+test_pred_full = get_pred(full_model, data = auto_test_data, res = "default", pos = "1", neg = "0", cut = 0.5)
+test_pred_reduced = get_pred(reduced_model, data = auto_test_data, res = "default", pos = "1", neg = "0", cut = 0.5)
+
+test_tab_full = table(predicted = test_pred_full, actual = auto_test_data$mpg)
+test_tab_reduced = table(predicted = test_pred_reduced, actual = auto_test_data$mpg)
+
+test_con_mat_full = confusionMatrix(test_tab_full, positive = "1")
+test_con_mat_reduced = confusionMatrix(test_tab_reduced, positive = "1")
+
+metrics = rbind(
+  
+  c(test_con_mat_full$overall["Accuracy"], 
+    test_con_mat_full$byClass["Sensitivity"], 
+    test_con_mat_full$byClass["Specificity"]),
+  
+  c(test_con_mat_reduced$overall["Accuracy"], 
+    test_con_mat_reduced$byClass["Sensitivity"], 
+    test_con_mat_reduced$byClass["Specificity"])
+)
+
+rownames(metrics) = c("Full model", "Improved model")
+round(metrics, 3)
+```
+
+```{r}
+test_prob1 = predict(full_model, newdata = auto_test_data, type = "response")
+test_roc1 = roc(auto_test_data$mpg ~ test_prob1, print.auc = TRUE)
+auc1 = as.numeric(test_roc1$auc)
+
+test_prob2 = predict(reduced_model, newdata = auto_test_data, type = "response")
+test_roc2 = roc(auto_test_data$mpg ~ test_prob2, print.auc = TRUE)
+auc2 = as.numeric(test_roc2$auc)
+
+auc = rbind(auc1, auc2)
+colnames(auc) = "AUC"
+rownames(auc) = c("Full model", "Reduced model")
+auc
+```
+
+We know that reduced has higher AUC = 0.9895 > 0.9876, which means the second model is better than full model, with higher accuracy and specificity.
+

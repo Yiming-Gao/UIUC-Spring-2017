@@ -1,0 +1,187 @@
+---
+title: "Homework 4"
+author: 'Yiming Gao (NetID: yimingg2)'
+date: "2017/2/22"
+output:
+  html_document:
+    theme: readable
+    toc: yes
+linestretch: 1.2
+---
+
+# Exercise 1
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+library(ISLR)
+library(tibble)
+library(readr)
+library(Metrics)
+library(caret)
+library(MASS)
+library(e1071)
+auto_train_data = read_csv("auto-train.csv")
+auto_test_data = read_csv("auto-test.csv")
+```
+
+We fit the following four models, and calculate their train and test accuracies, respectively.
+
+- Additive Logistic Regression
+- LDA
+- QDA
+- Naive Bayes
+
+```{r}
+# define some functions
+get_pred = function(mod, data, res = "y", pos = 1, neg = 0, cut = 0.5) {
+  probs = predict(mod, newdata = data, type = "response")
+  ifelse(probs > cut, pos, neg)
+}
+
+accuracy <- function(actual, predicted) {
+  mean(actual == predicted)
+}
+
+# coerce the response to be a factor variable
+auto_train_data$mpg = factor(auto_train_data$mpg)
+auto_test_data$mpg = factor(auto_test_data$mpg)
+
+# additive logistic regression
+additive1 = glm(mpg ~ ., data = auto_train_data, family = "binomial")
+
+# LDA
+lda1 = lda(mpg ~ ., data = auto_train_data)
+
+# QDA
+qda1 = qda(mpg ~ ., data = auto_train_data)
+
+# Naive Bayes
+nb1 = naiveBayes(mpg ~ ., data = auto_train_data)
+
+# Get accuracies
+# Additive logistic accuracy
+additive1_train_accuracy = accuracy(predicted = get_pred(additive1, data = auto_train_data, res = "mpg", pos = "1", neg = "0", cut = 0.5), actual = auto_train_data$mpg)
+additive1_test_accuracy = accuracy(predicted = get_pred(additive1, data = auto_test_data, res = "mpg", pos = "1", neg = "0", cut = 0.5), actual = auto_test_data$mpg)
+
+# LDA accuracy
+lda1_train_accuracy = accuracy(predicted = predict(lda1, newdata = auto_train_data)$class,
+                               actual = auto_train_data$mpg)
+lda1_test_accuracy = accuracy(predicted = predict(lda1, newdata = auto_test_data)$class,
+                              actual = auto_test_data$mpg)
+
+# QDA accuracy
+qda1_train_accuracy = accuracy(predicted = predict(qda1, newdata = auto_train_data)$class,
+                               actual = auto_train_data$mpg)
+qda1_test_accuracy = accuracy(predicted = predict(qda1, newdata = auto_test_data)$class,
+                              actual = auto_test_data$mpg)
+
+# Naive Bayes accuracy
+nb1_train_accuracy = accuracy(predicted = predict(nb1, newdata = auto_train_data, type = "class"), actual = auto_train_data$mpg)
+nb1_test_accuracy = accuracy(predicted = predict(nb1, newdata = auto_test_data, type = "class"), actual = auto_test_data$mpg)
+```
+
+We summarize the results into the following table:
+
+| Model   | Train accuracy     | Test accuracy         | 
+|:---------:|:------------------:|:-------------------:|
+| `Additive Logistic Regression` | `r round(additive1_train_accuracy,3)`  | `r round(additive1_test_accuracy,3)`   | 
+| `LDA` | `r round(lda1_train_accuracy,3)`  | `r round(lda1_test_accuracy,3)`   | 
+| `QDA` | `r round(qda1_train_accuracy,3)`  | `r round(qda1_test_accuracy,3)`   |
+| `Naive Bayes` | `r round(nb1_train_accuracy,3)`  | `r round(nb1_test_accuracy,3)`   | 
+
+We know that in this specific dataset, `LDA` performs best as it gives both higher **train accuracy** and **test accuracy** compared to other three models. Meanwhile, there is not much difference between train and test accuracies for `LDA`, which means overfitting problem does not exist.
+
+# Exercise 2
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+train_data = read_csv("hw04-train.csv")
+test_data = read_csv("hw04-test.csv")
+```
+
+We first coerce response `y` to be a factor.
+
+```{r}
+train_data$y = factor(train_data$y)
+test_data$y = factor(test_data$y)
+```
+
+Then we create a ellipse plot to identify the distribution of each class. From the plot we notice that some points of two classes are overlapped.
+
+```{r}
+featurePlot(x = train_data[,c("x1", "x2")], y = train_data$y, plot = "ellipse", auto.key = list(columns = 4))
+```
+
+We train the following models:
+
+- Additive Logistic Regression
+- LDA
+- LDA with Flat Prior
+- QDA
+- QDA with Flat Prior
+- Naive Bayes
+
+```{r}
+library(nnet)
+Add = multinom(y ~ ., data = train_data, trace = FALSE)
+LDA = lda(y ~ ., data = train_data)
+LDA_flat = lda(y ~ ., data = train_data, prior = c(1, 1, 1, 1)/4)
+QDA = qda(y ~ ., data = train_data)
+QDA_flat = qda(y ~ ., data = train_data, prior = c(1, 1, 1, 1)/4)
+NB = naiveBayes(y ~ ., data = train_data)
+
+# Additive logistic accuracy
+Add_train_accuracy = accuracy(predicted = predict(Add, newdata = train_data), actual = train_data$y)
+Add_test_accuracy = accuracy(predicted = predict(Add, newdata = test_data), actual = test_data$y)
+
+# LDA accuracy
+LDA_train_accuracy = accuracy(predicted = predict(LDA, newdata = train_data)$class, actual = train_data$y)
+LDA_test_accuracy = accuracy(predicted = predict(LDA, newdata = test_data)$class, actual = test_data$y)
+
+# LDA_flat accuracy
+LDA_flat_train_accuracy = accuracy(predicted = predict(LDA_flat, newdata = train_data)$class, actual = train_data$y)
+LDA_flat_test_accuracy = accuracy(predicted = predict(LDA_flat, newdata = test_data)$class, actual = test_data$y)
+
+# QDA accuracy
+QDA_train_accuracy = accuracy(predicted = predict(QDA, newdata = train_data)$class, actual = train_data$y)
+QDA_test_accuracy = accuracy(predicted = predict(QDA, newdata = test_data)$class, actual = test_data$y)
+
+# QDA_flat accuracy
+QDA_flat_train_accuracy = accuracy(predicted = predict(QDA_flat, newdata = train_data)$class, actual = train_data$y)
+QDA_flat_test_accuracy = accuracy(predicted = predict(QDA_flat, newdata = test_data)$class, actual = test_data$y)
+
+# Naive Bayes accuracy
+NB_train_accuracy = accuracy(predicted = predict(NB, newdata = train_data, type = "class"), actual = train_data$y)
+NB_test_accuracy = accuracy(predicted = predict(NB, newdata = test_data, type = "class"), actual = test_data$y)
+```
+
+We summarize the results into the following table:
+
+| Model                          | Train accuracy                      | Test accuracy                      | 
+|:------------------------------:|:-----------------------------------:|:----------------------------------:|
+| `Additive Logistic Regression` | `r round(Add_train_accuracy,3)`     | `r round(Add_test_accuracy,3)`     | 
+| `LDA`                          | `r round(LDA_train_accuracy,3)`     | `r round(LDA_test_accuracy,3)`     | 
+| `LDA with Flat Prior`          | `r round(LDA_flat_train_accuracy,3)`| `r round(LDA_flat_test_accuracy,3)`| 
+| `QDA`                          | `r round(QDA_train_accuracy,3)`     | `r round(QDA_test_accuracy,3)`     |
+| `QDA with Flat Prior`          | `r round(QDA_flat_train_accuracy,3)`| `r round(QDA_flat_test_accuracy,3)`|
+| `Naive Bayes`                  | `r round(nb1_train_accuracy,3)`     | `r round(nb1_test_accuracy,3)`     |
+
+Note that **Naive Bayes** model gives us the highest train and test accuracies. Because Naive Bayes assumes the predicters $X_1$ and $X_2$ are independent, which is consistant to the ellipse plot before, i.e., there is little trend between $X_1$ and $X_2$. Under this naive independence assumption, Naive Bayes model outperforms other models in terms of training and test accuracies.
+
+Then we find out which class is out NB classifier classifying the best.
+
+```{r}
+# confustion matrix
+result = table(predicted = predict(NB, newdata = test_data, type = "class"), actual = test_data$y)
+result
+
+# class accuracy
+class_accuracy = c(
+  result[1, 1]/sum(result[, 1]),
+  result[2, 2]/sum(result[, 2]),
+  result[3, 3]/sum(result[, 3]),
+  result[4, 4]/sum(result[, 4]))
+
+knitr::kable(data.frame("Class A" = class_accuracy[1], "Class B" = class_accuracy[2],
+                        "Class C" = class_accuracy[3], "Class D" = class_accuracy[4]), align = "c")
+```
+
+We know that for our best classifier (Naive Bayes classifier), it classifies **Class B** the best with $95\%$ test accuracy.
