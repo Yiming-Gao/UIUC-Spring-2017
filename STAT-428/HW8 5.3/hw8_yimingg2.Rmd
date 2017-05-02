@@ -1,0 +1,192 @@
+---
+title: "STAT 428 Homework 8"
+author: 'Yiming Gao (NetID: yimingg2)'
+date: "2017/4/27"
+output:
+  pdf_document:
+    toc: yes
+linestretch: 1.2
+fontsize: 11pt
+---
+
+## Exercise 1
+
+Generate 200 data points from the model $Y = sin(x)+sin(x^2)+sin(x^3)+e$ where $x$ is uniform on $(0,\pi)$ and $e\sim N(0,0.25)$. Fit the data using cubic B-splines and use LOOCV to decide on how many knots to use and roughly where the knots should be placed.
+
+```{r}
+# Generate a sample of n = 200
+set.seed(27)
+x = sort(runif(200, 0, pi))
+mx = sin(x) + sin(x^2) + sin(x^3)
+e = rnorm(200, 0, sd = 0.5)
+y = mx + e
+```
+
+```{r, echo=FALSE, fig.align="c"}
+# plot the data and the true regression curve
+matplot(x, cbind(mx, y), type = "ln", xlab = "x", ylab = "y", col = "dodgerblue2", lwd = 1.2)
+text(x, y, "*")
+grid()
+```
+
+Then we try to select the number of knots based on LOOCV MSE.
+
+```{r, message=FALSE, warning=FALSE}
+library(splines)
+xrange = seq(2, 10, 1)
+MSE = rep(0, length(xrange))
+
+for (i in xrange) {
+  
+  for (j in 1:200) {
+    yj = y[-j]
+    xj = x[-j]
+    MSE0 = 0
+    
+    regspline = lm(yj ~ bs(xj, knots = seq(0, pi, length.out = i + 2)[2: i + 1], degree = 3))
+    pred = predict(regspline, data.frame(xj = x[j]))
+    MSE0 = MSE0 + (y[j]- pred)^2 / 200
+  }
+  
+  MSE[i-1] = MSE0
+}
+
+result = round(cbind(xrange, MSE), 5)
+colnames(result) = c("Number of knots", "MSE")
+print(result)
+```
+
+We plot the leave-one-out cross validated MSE vs. number of knots, and find out when we have 4 knots, we get the lowest MSE, which is 0.00005 with this seed.
+
+```{r, echo=FALSE, fig.align="c"}
+plot(xrange, MSE, xlab = "Number of knots", ylab = "LOOCV MSE", type = "b")
+abline(v = which.min(MSE) + 1, col = "dodgerblue2", lty = 2, lwd = 1.5)
+grid()
+```
+
+We notice that in the previous case, 3 knots and 4 knots give similar low leave one out MSE. We then try the cubic splines independently and draw a plot for comparison.
+
+```{r}
+regspline1 = lm(y ~ bs(x, knots = seq(0, pi, length.out = 5)[2: 4], degree = 3))
+regspline2 = lm(y ~ bs(x, knots = seq(0, pi, length.out = 6)[2: 5], degree = 3))
+```
+
+```{r, echo=FALSE, fig.align="c"}
+plot(x, y, xlab = "x", ylab = "y", cex = 0.8)
+lines(x, mx, type = "l")
+lines(x, regspline1$fitted.values, col = "coral1")
+lines(x, regspline2$fitted.values, col = "dodgerblue2")
+title("Cubic B-splines")
+legend(-0.1, 3.8, c("True regression", "3 knots", "4 knots"), lty = c(1, 1, 1), col = c("black", "coral1", "dodgerblue2"), bty = "n", text.col = c("black", "coral1", "dodgerblue2"))
+grid()
+```
+
+Previously we put knots evenly at the range of x $(0,\pi)$ and find when the number of knots is 4, we get the lowest MSE. Then we try two approaches to figure out where to put these knots to achieve better results. 
+
+### Grid search
+
+First we try break the range of x into 4 even intervals, and do grid search on each interval. We create a knots grid to contain all possible combinations of knots, iterate the algorithm, and store each MSE into the vector `MSE`. Here we try $5*5*5*4=500$ combinations.
+
+```{r, message=FALSE, warning=FALSE}
+knot1 = seq(0, pi*(1/4), length.out = 6)[2: 6]
+knot2 = seq(pi*(1/4), pi*(2/4), length.out = 6)[2: 6]
+knot3 = seq(pi*(2/4), pi*(3/4), length.out = 6)[2: 6]
+knot4 = seq(pi*(3/4), pi, length.out = 6)[2: 5]
+
+knots_grid = as.matrix(expand.grid(knot1 = knot1, knot2 = knot2, 
+                                   knot3 = knot3, knot4 = knot4))
+```
+
+```{r, message=FALSE, warning=FALSE}
+MSE = rep(0, nrow(knots_grid))
+
+for (i in 1:nrow(knots_grid)) {
+  
+  for (j in 1:200) {
+    yj = y[-j]
+    xj = x[-j]
+    MSE0 = 0
+    
+    regspline = lm(yj ~ bs(xj, knots = knots_grid[i, ], degree = 3))
+    pred = predict(regspline, data.frame(xj = x[j]))
+    MSE0 = MSE0 + (y[j]- pred)^2 / 200
+  }
+  
+  MSE[i] = MSE0
+}
+
+index = match(sort(MSE)[1:10], MSE)
+best_grid_knots = knots_grid[index[1], ]
+```
+
+```{r, echo=FALSE, warning=FALSE}
+options(scipen = 0)
+knots = knots_grid[index, ]
+result = cbind(round(knots, 4), sort(MSE)[1:10])
+colnames(result) = c("Knot1", "Knot2", "Knot3", "Knot4", "MSE")
+print(result)
+```
+
+We print out 10 minimum MSE and corresponding knot placements. The first row gives the lowest LOOCV MSE $3.594e-10$, where the knots are placed at (0.6283, 1.5708, 2.0420, 2.5133). We fit the best cubic spline model for creating plot later.
+
+```{r}
+regspline_grid = lm(y ~ bs(x, knots = knots[1, ], degree = 3))
+```
+
+### Random Search
+
+Then we try to place knots randomly on $(0,\pi)$. We iterate 100 times.
+
+```{r, message=FALSE, warning=FALSE}
+set.seed(27)
+knots_random = matrix(runif(100 * 4, 0, pi), nrow = 100, ncol = 4)
+MSE = rep(0, nrow(knots_random))
+
+for (i in 1:nrow(knots_random)) {
+  
+  for (j in 1:200) {
+    yj = y[-j]
+    xj = x[-j]
+    MSE0 = 0
+    
+    regspline = lm(yj ~ bs(xj, knots = knots_random[i, ], degree = 3))
+    pred = predict(regspline, data.frame(xj = x[j]))
+    MSE0 = MSE0 + (y[j]- pred)^2 / 200
+  }
+  
+  MSE[i] = MSE0
+}
+
+index = match(sort(MSE)[1:10], MSE)
+best_random_knots = knots_random[index[1], ]
+```
+
+```{r, echo=FALSE, warning=FALSE}
+knots = knots_random[index, ]
+result = cbind(round(knots, 4), sort(MSE)[1:10])
+colnames(result) = c("Knot1", "Knot2", "Knot3", "Knot4", "MSE")
+print(result)
+```
+
+We print out first 10 minimum MSE using random search and corresponding knot placements. The first row gives the lowest LOOCV MSE $2.401e-07$, where the knots are placed at $(0.5500, 2.3142, 1.9527, 2.0259)$. 
+
+We can plot the two best spline in the following cell. I set the knots selected by grid search orange, and by random search blue on x-axis.
+
+```{r}
+regspline_random = lm(y ~ bs(x, knots = knots[1, ], degree = 3))
+```
+
+```{r, echo=FALSE, fig.align="c", fig.height=6, fig.width=10, message=FALSE}
+plot(x, y, xlab = "x", ylab = "y", cex = 0.8, xaxt = "n")
+lines(x, mx, type = "l")
+lines(x, regspline_grid$fitted.values, col = "coral1")
+lines(x, regspline_random$fitted.values, col = "dodgerblue2")
+axis(side = 1, at = round(best_grid_knots, 2), col.axis = "coral1", cex = 0.8)
+axis(side = 1, at = round(best_random_knots, 2), col.axis = "dodgerblue2", cex = 0.8)
+title("Cubic B-splines")
+legend(-0.1, 3.8, c("True regression", "Grid search", "Random search"), lty = c(1, 1, 1), col = c("black", "coral1", "dodgerblue2"), bty = "n", text.col = c("black", "coral1", "dodgerblue2"))
+grid()
+```
+
+We notice that two colored lines are almost overlapped.
+

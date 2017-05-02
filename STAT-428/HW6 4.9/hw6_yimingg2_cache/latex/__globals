@@ -1,0 +1,14 @@
+unnamed-chunk-1	c	exp	log	return	sum
+unnamed-chunk-2	$	c	lik_beta	list	optim
+unnamed-chunk-3	c	hessian	library	lik_beta	solve
+unnamed-chunk-4	X	Y	loglik	sapply	seq
+unnamed-chunk-5	beta1	exp	expression	grid	lbeta1	plot
+unnamed-chunk-6	$	X	Y	c	exp	return	sum	uniroot
+unnamed-chunk-7	==	X	Y	loglik	max	sapply	seq
+unnamed-chunk-8	<	<=	Lbeta1	[<-	abs	break	if	length	numeric	return	while
+unnamed-chunk-9	[[	coal	floor	length	library	tabulate
+unnamed-chunk-10	factorial	length	log	return	sum	y
+unnamed-chunk-11	$	c	length	LL_given	optim	y
+unnamed-chunk-12	[<-	$	for	length	LL_given	matrix	optim	param0	paste	print	round	rownames<-	seq	y
+unnamed-chunk-13	abline	c	expression	k_to_try	MLE_matrix	par	plot
+unnamed-chunk-14	apply	mean	MLE_matrix

@@ -1,0 +1,237 @@
+---
+title: "STAT 428 Homework 6"
+author: 'Yiming Gao (NetID: yimingg2)'
+date: "2017/4/2"
+output:
+  pdf_document:
+    toc: yes
+linestretch: 1.2
+fontsize: 11pt
+---
+```{r setup, echo = FALSE, message = FALSE, warning = FALSE}
+options(scipen = 1, digits = 4, width = 80)
+library(knitr)
+opts_chunk$set(echo=TRUE,
+               cache=TRUE, autodep=TRUE, cache.comments=FALSE,
+               message=FALSE, warning=FALSE)
+```
+
+# Exercise 1
+
+We have data in pairs $(x_{i},y_{i})$ for $i=1,2,...,25$.
+Conditional on $x_{i}$, $y_{i}$ is Bernoulli with success probability
+
+$$
+p_{i}=P[y_{i}=1|x_{i}]=\frac{e^{\beta_{0}+\beta_{1}x_{i}}}{1+e^{\beta_{0}+\beta_{1}x_{i}}}
+$$
+
+and the log-likelihood function is 
+
+$$
+\ell({\bf{\beta}})=\sum_{i=1}^{n}[y_{i}log(p_{i})+(1-y_{i})log(1-p_{i})]
+$$
+
+First we define the log-likelihood function and input the given data in the following cell.
+
+```{r}
+loglik <- function(beta0, beta1, x,  y) {
+  prob = exp(beta0 + beta1 * x) / (1 + exp(beta0 + beta1 * x)) 
+  # success probability
+  f = sum(y * log(prob) + (1 - y) * log(1 - prob)) # log-likelihood
+  return(f)
+}
+
+X = c(1.34, -1.38, -0.19, -0.44, 1.90, -0.80, 0.91, 0.26, 1.37, -1.62, 
+      -0.96, 1.90, 0.99, 1.96, -1.57, 1.51, -1.61, -1.02, -0.92, -1.87, 
+      1.73, -1.23, -1.24, 0.22, 1.42)
+
+Y = c(1, 0, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0)
+
+# likelihood at the given data
+lik_beta <- function(beta) {
+  loglik(beta[1], beta[2], X, Y)
+}
+```
+
+### Part a
+Use the function `optim()`to compute $\hat{{\bf{\beta}}}$ using initial value (.25,.75).
+
+Note that by default this function performs minimization, but it will maximize if `control$fnscale` is negative.
+
+```{r}
+optim1 = optim(c(0.25, 0.75), lik_beta, control = list(fnscale = -1))
+beta.hat = optim1$par
+lik = optim1$value
+beta.hat
+```
+ 
+ Starting with initial value (0.25, 0.75), the estimated $\hat{\beta}$ is `r beta.hat` and the log-likelihood at that point is `r lik`.
+
+### Part b (bonus)
+
+We will find out the next value when using the Newton-Raphson algorithm.
+
+```{r}
+library(numDeriv)
+init = c(0.25, 0.75)
+# numerical gradient of a function, i.e., score function
+grad = grad(lik_beta, init) 
+hess_matrix = hessian(lik_beta, init) # Hessian matrix
+next_value = init - solve(hess_matrix) %*% grad
+next_value
+```
+
+The next value for estimated $\beta$ is (`r next_value`).
+
+### Part c
+
+Assume that $\beta_{0}=0$, and plot the likelihood function $L(\beta_{1})$ as a function of $\beta_{1}$.
+
+```{r}
+function_c <- function(beta1) {
+  loglik(0, beta1, X, Y)
+}
+
+beta1 = seq(-0.5, 2.5, 0.05)
+lbeta1 = sapply(beta1, function_c)
+```
+
+```{r, echo=FALSE, fig.align="center"}
+# make plot
+plot(beta1, exp(lbeta1), col = "seagreen",
+     main = expression(paste("Likelihood of ", beta[1])),
+     xlab = expression(beta[1]), ylab = "Likelihood")
+grid()
+```
+
+### Part d
+
+From the plot in part c, we will use 1 as the initial value of $\beta_1$, and assume $\beta_0=0$ to find $\hat{\beta_1}$ by using three different methods.
+
+- **`uniroot()`**
+
+```{r}
+# the derivatives of the likelihood functions
+derivative <- function(beta){
+  p <- exp(beta[1] + beta[2] * X)/(1+exp(beta[1] + beta[2] * X))
+  deriv <- c(sum(Y - p),sum(X * (Y - p)))
+  return(deriv)
+}
+
+beta0 = 0
+Lbeta1 = function(beta) {derivative(c(0, beta))[2]}
+beta1_hat_uni = uniroot(Lbeta1, c(0, 2))$root
+beta1_hat_uni 
+```
+
+- **Grid Search**
+
+We calculate `f` 10000 times.
+
+```{r}
+grid = seq(0, 2, length.out = 10000)
+f = sapply(grid, function(beta) {loglik(0, beta, X, Y)})
+beta1_hat_grid = grid[f == max(f)]
+beta1_hat_grid
+```
+
+- **Newton-Raphson algorithm**
+
+```{r}
+# N-R function
+NewtonRaph <- function(f, tol=1e-7, x0, N) {
+  h = 1e-7
+  i = 1
+  p = numeric(N)
+  while(i <= N) {
+    dfdx = (f(x0 + h) - f(x0)) / h
+    x1 = (x0 - (f(x0) / dfdx))
+    p[i] = x1
+    i = i + 1
+    if(abs(x1 - x0) < tol) break
+    x0 = x1
+  }
+  return(p[1: (i-1)])
+}
+
+roots = NewtonRaph(Lbeta1, x0 = 1, N = 1000)
+
+beta1_hat_NR = roots[length(roots)]
+```
+
+The `uniroot` estimate is `r beta1_hat_uni`, the grid search estimate is `r beta1_hat_grid` and the N-R method esimate is `r beta1_hat_NR`, which gives same estimates.
+
+
+# Exercise 2
+
+We assume
+$$Y_i\sim Poisson(\mu) \quad for\quad i = 1,2,...,k$$
+$$Y_i\sim Poisson(\lambda) \quad for\quad i = k+1,...,n$$
+With some simplifying, the log-likelihood is 
+$$l(\mu,\lambda) = \sum_{i=1}^k[-\mu+y_ilog(\mu)-log(y_i!)]+\sum_{i=k+1}^n[-\lambda+y_ilog(\lambda)-log(y_i!)]$$
+
+```{r}
+library(boot)
+y = floor(coal[[1]])
+y = tabulate(y)
+y = y[1851: length(y)]
+```
+
+```{r}
+# log ikelihood function defined as a function in the parameter and data
+loglike_change <- function(k, mu, lambda, y) {
+  item1 = -mu + y * log(mu) - log(factorial(y))
+  item2 = -lambda + y * log(lambda) - log(factorial(y))
+  l = sum(item1[1: k]) + sum(item2[(k+1): length(y)])
+  return(-l) # optim() performs minimization by default
+}
+
+# Likelihood at the given k, data
+LL_given <- function(param, k) {
+  loglike_change(k, param[1], param[2], y)
+}
+```
+
+First we set k is the length of half of the data, and initial value for $(\mu,\lambda)$ is $(2.5, 1)$.
+
+```{r}
+# now we set k and initial values
+k = length(y)/2 # k = 56
+param0 = c(2.5, 1)
+
+optim(param0, LL_given, k = k)$par
+```
+
+For the given dataset, we can find the MLE of $(\mu, \lambda)$ given k is the midpoint of timeline is (`r optim(param0, LL_given, k = k)$par`).
+
+Just for fun, let's learn how MLE of parameters change as k changes. We set 10 k's here, ranging from 2 to total years minus 1.
+
+```{r}
+k_to_try = round(seq(2, length(y)-1, length.out = 10))
+
+MLE_matrix = matrix(0, nrow = length(k_to_try), ncol = 2)
+for (i in 1:10) {
+  ki = k_to_try[i]
+  MLE_matrix[i, ] = optim(param0, LL_given, k = ki)$par
+}
+
+rownames(MLE_matrix) = paste("k =", k_to_try)
+print(MLE_matrix)
+```
+
+```{r, echo=FALSE, fig.align="center"}
+par(mfrow = c(1,2))
+plot(k_to_try, MLE_matrix[,1], ylab = expression(paste('Estimation of ', mu)))
+abline(h = 2.5, lty = 2, col = "dodgerblue2", lwd = 1.5)
+plot(k_to_try, MLE_matrix[,2], ylab = expression(paste('Estimation of ', lambda)))
+abline(h = 1, lty = 2, col = "dodgerblue2", lwd = 1.5)
+```
+
+```{r}
+# mean of estimates
+apply(MLE_matrix, 2, mean)
+```
+
+From the plot we notice that the estimates of parameters fall as k goes up, and when k is somewhere around midpoint, both estimates will come close to the true value $(2.5, 1)$. 
+
+Then we calculate the mean of estimates for $(\mu, \lambda)$ is (`r apply(MLE_matrix, 2, mean)`).

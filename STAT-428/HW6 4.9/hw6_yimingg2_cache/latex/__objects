@@ -1,0 +1,14 @@
+unnamed-chunk-1	X	Y	lik_beta	loglik
+unnamed-chunk-2	beta.hat	lik	optim1
+unnamed-chunk-3	grad	hess_matrix	init	next_value
+unnamed-chunk-4	beta1	function_c	lbeta1
+unnamed-chunk-5	
+unnamed-chunk-6	Lbeta1	beta0	beta1_hat_uni	derivative
+unnamed-chunk-7	beta1_hat_grid	f	grid
+unnamed-chunk-8	NewtonRaph	beta1_hat_NR	roots
+unnamed-chunk-9	y
+unnamed-chunk-10	LL_given	loglike_change
+unnamed-chunk-11	k	param0
+unnamed-chunk-12	i	k_to_try	ki	MLE_matrix
+unnamed-chunk-13	
+unnamed-chunk-14	

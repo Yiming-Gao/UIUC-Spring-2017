@@ -1,0 +1,378 @@
+---
+title: "STAT 428 Homework 5"
+author: 'Yiming Gao (NetID: yimingg2)'
+date: "2017/3/28"
+output:
+  pdf_document:
+    toc: yes
+linestretch: 1.2
+fontsize: 11pt
+---
+## Exercise 1 (Rizzo 9.3)
+
+Use the Metropolis-Hastings sampler to generate random variables from a standard Cauchy distribution. Discard the first 1000 of the chain and compare the deciles of the generated observations with the deciles of the standard Cauchy distribution. Recall that density function of Cauchy($\theta$, $\eta$) is
+$$f(x)=\frac{1}{\theta\pi(1+[(x-\eta)/\theta]^2)},\quad -\infty <0<\infty,\theta>0$$
+The standard Cauchy has Cauchy($\theta=1$, $\eta=0$) density, i.e.
+$$f(x)=\frac{1}{\pi(1+x^2)},\quad -\infty <0<\infty$$
+We use the normal distribution as the proposal density with mean given by the previous value in the chain and the standard deviation given by $\sigma=2$. We will discard the first 1000 of the chain.
+
+```{r}
+set.seed(27)
+# cauchy density
+f1 <- function(x) {
+  1/(pi*(1 + x^2))
+} 
+
+# initialize parameters
+m = 10000
+b = 1001 # burn-in period
+x = numeric(m)
+x[1] = rnorm(1, 0, 2)
+k = 0 # count the number of times y is rejected
+u = runif(m)
+
+# run the chain
+for (i in 2:m) {
+  xt = x[i-1]
+  y = rnorm(1, xt, 2)
+  num = f1(y) * dnorm(xt, y, 2)
+  den = f1(xt) * dnorm(y, xt, 2)
+  if (u[i] <= num/den) {
+    x[i] = y
+    }  
+  else {
+    x[i] = xt
+    k = k + 1 # y is rejected
+  }
+}
+
+index = b:m
+y = x[index]
+prob = seq(0.1, 0.9, 0.1)
+# standard cauchy
+std_cauchy = qcauchy(prob)
+# simulation
+sim_cauchy = quantile(y, prob)
+rbind(std_cauchy, sim_cauchy)
+```
+
+We notice that the generated data has similar quantiles to standard cauchy distribution. Then we plot the data.
+
+```{r, echo=FALSE, fig.align="center", fig.width=10}
+plot(index, y, type = "l", main = "", ylab = "x", col = "dodgerblue2", ylim = c(-15, 15))
+axis(1, at = seq(1000, 10000, by = 1000)) 
+grid()
+```
+
+The plot below shows the histogram of the generated sample after burnin period.
+
+```{r, echo=FALSE, fig.align="center", fig.width=8}
+hist(y, breaks = "scott", xlab = "x", freq = FALSE)
+lines(std_cauchy, f1(std_cauchy), col = "dodgerblue2", lwd = 2)
+grid()
+```
+
+The chain plot and associated histogram of the generated sample after discarding first 1000 observations show us there is no pattern in the data, which is what we expect.
+
+## Exercise 2 (Rizzo 9.4)
+
+The standard Laplace distribution has target density
+$$f(x) = \frac{1}{2}e^{-|x|},\quad x\in R$$
+```{r}
+# Laplace density
+f2 <- function(x) {
+  0.5 * exp(-abs(x))
+} 
+
+# write a function
+rw.Metropolis <- function(sigma, x0, N) {
+  x = numeric(N)
+  x[1] = x0
+  u = runif(N)
+  k = 0 # number of accepted proposals
+  for (i in 2:N) {
+    y = rnorm(1, x[i-1], sigma) # proposal
+    ratio = f2(y) / f2(x[i-1])
+    accept = (u[i] <= ratio)
+    x[i] = y*accept + x[i-1]*(1-accept)
+    k = k + accept
+  }
+  return(list(x = x, k = k))
+}
+
+# Let's try with 4 different choices for sigma
+N = 5000
+sigma = c(0.05, 0.5, 2, 16)
+x0 = 10
+
+rw1 = rw.Metropolis(sigma[1], x0, N)
+rw2 = rw.Metropolis(sigma[2], x0, N)
+rw3 = rw.Metropolis(sigma[3], x0, N)
+rw4 = rw.Metropolis(sigma[4], x0, N)
+
+# how many we accepted in each case
+print(c(rw1$k, rw2$k, rw3$k, rw4$k))
+print(c(rw1$k, rw2$k, rw3$k, rw4$k)/5000)
+```
+
+The third chain has an acceptance rate around 0.5, so it might be the most efficient. Then we plot four chains.
+
+```{r, echo=FALSE, fig.align="center", fig.height=8, fig.width=10}
+par(mfrow = c(2, 2))
+len = 1:5000
+plot(len, rw1$x, ylab = "x", type = "l")
+grid() 
+title("sigma = 0.05")
+plot(len, rw2$x, ylab = "x", type = "l")
+grid() 
+title("sigma = 0.5")
+plot(len, rw3$x, ylab = "x", type = "l")
+grid() 
+title("sigma = 2")
+plot(len, rw4$x, ylab = "x", type = "l")
+grid() 
+title("sigma = 16")
+```
+
+Now let's see how closely the draws match the quantiles of the Laplace density.
+
+```{r}
+burnin = 500
+prob = c(0.05, seq(0.1, 0.9, 0.1), 0.95)
+Q = rmutil::qlaplace(prob) # Laplace quantiles
+rw = cbind(rw1$x, rw2$x, rw3$x, rw4$x)
+mc = rw[-burnin, ]
+Qrw = apply(mc, 2, function(x) quantile(x, prob))
+colnames(Qrw) = c("rw1", "rw2", "rw3", "rw4")
+print(round(cbind(Q, Qrw), 3))
+```
+
+We notice that the **rw3** chain has closest quantile values to theoretical values.
+
+## Exercise 3 (Rizzo 9.6)
+The group sizes of 197 animals in four categories are (125, 18, 20, 34). Assume that the probabilities of the corresponding multinomial distribution are
+$$(\frac{1}{2}+\frac{\theta}{4}, \frac{1-\theta}{4}, \frac{1-\theta}{4},\frac{\theta}{4})$$
+We want to estimate the posterior distribution of $\theta$ given the observed sample. We will use similar method for the Investment Model example. The likelihood function is a multinomial
+$$f(x_1, x_2,x_3,x_4|\theta) = \frac{197!}{x_1!x_2!x_3!x_4!}(\frac{1}{2}+\frac{\theta}{4})^{x_1}(\frac{1-\theta}{4})^{x_2}(\frac{1-\theta}{4})^{x_3}(\frac{\theta}{4})^{x_4}$$
+We use Metropolis sampler to have a target distribution equal to the posterior probability density function of $\theta$. The given sample is $X_{obs} = (125, 18, 20, 34)$.
+
+```{r}
+# initialize parameters
+theta = 0.5 # actual value of theta
+w = 0.25 # width of uniform support of proposal
+m = 5000 # length of chain
+sample = c(125, 18, 20, 34)
+x = numeric(m)
+
+# define a function proportional to the target density
+prob <- function(y, count) {
+  # compute (without the constant) the target density
+  if (y < 0 || y > 1)
+    return(0)
+  else
+    return((1/2 + y/4)^count[1] * ((1-y)/4)^count[2] * ((1-y)/4)^count[3] * (y/4)^count[4])
+}
+
+# set up the chain
+u = runif(m)
+v = runif(m, -w, w) # proposal increments
+x[1] = 0.5 # initial value
+for (i in 2:m) {
+  y = x[i-1] + v[i]
+  if (u[i] <= prob(y, sample) / prob(x[i-1], sample))
+    x[i] = y
+  else
+    x[i] = x[i-1]
+}
+```
+
+We can find the posterior mean.
+
+```{r}
+print(mean(x))
+```
+
+Then we plot the chain and density estimate, as well as the histogram in the following cells.
+
+```{r, echo=FALSE, fig.align="center", fig.width=10}
+xb = x[1001:m]
+plot(x, type = "l")
+abline(v = 1000, lty = 2, col = "dodgerblue", lwd = 2)
+grid()
+```
+```{r, echo=FALSE, fig.align="center", fig.height=10}
+par(mfrow=c(2, 1))
+# density estimate
+plot(density(xb), lwd = 1.5, main = "Density plot")
+grid()
+
+# histogram
+hist(xb, prob = TRUE, xlab = bquote(theta), ylab = "X", breaks = 30)
+z = seq(min(xb), max(xb), length = 1000)
+lines(z, dnorm(z, mean(xb), sd(xb)), col = "dodgerblue2", lwd = 1.5)
+grid()
+```
+
+
+## Exercise 4 (Rizzo 9.8)
+
+Consider the bivariate density
+$$f(x,y)\propto \binom{n}{x} \; y^{x+a-1} \; (1-y)^{n-x+b-1}, \quad x = 0,1,\ldots, n, \; 0 \le y \le 1$$
+For some fixed $a,b,n$, the conditional distributions are Binomial($n,y$) and Beta($x+a, n-x+b$). We will generate a chain with target joint density `f(x,y)` using Gibbs sampler.
+
+```{r}
+gibbs <- function(n, a, b) {
+  N = 5000
+  X = matrix (0, N, 2) # store chain
+  
+  # run the chain
+  X[1, ] = c(floor(n/2), a/(a+b)) # initial value
+  for (i in 2:N) {
+    y = X[i-1, 2]
+    X[i, 1] = rbinom(1, n, y)
+    x = X[i, 1]
+    X[i, 2] = rbeta(1, x+a, n-x+b)
+  }
+  chain = X[1001:N, ]
+  return(chain)
+}
+```
+
+The function `gibbs` returns the chain generated from the target joint density. Then we look at an example when $a = 1, b=2, n=100$.
+
+```{r}
+sample = gibbs(100, 1, 2)
+
+# mean and variance of the chain after deleting 1000 burn-in draws
+## mean
+apply(sample, 2, mean)
+
+## sd
+apply(sample, 2, sd)
+```
+
+Then we plot the chain.
+
+```{r, echo=FALSE, fig.align="center", fig.height=4, fig.width=6}
+## plot chain
+plot(sample, cex = 0.5, xlab = "x", ylab = "y", main = "a = 1, b = 2")
+grid()
+```
+
+
+## Exercise 5 (Rizzo 9.11)
+
+Refer to Example 9.5, use Gelman-Rubin method to monitor convergence of the chain, and run the chain until the chain has converged approximately to the target distribution according to $\hat{R}<1.2$. Also use the `coda` package to check for the convergence of the chain by the Gelman-Rubin method.
+
+First we build up `Gelman.Rubin` function.
+
+```{r, message=FALSE, warning=FALSE}
+library(coda)
+# define Gelman-Rubin method
+Gelman.Rubin <- function(psi) {
+  psi = as.matrix(psi)
+  n = ncol(psi)
+  k = nrow(psi)
+  
+  psi.means = rowMeans(psi) # row means
+  B = n * var(psi.means) # between variance est.
+  psi.w = apply(psi, 1, "var") # within variances
+  W = mean(psi.w) # within variance est.
+  v.hat = W*(n-1)/n + (B/n) # upper variance est.
+  r.hat = v.hat/W  # Gelman-Rubin statistics
+  return(r.hat)
+}
+```
+
+Then we initialize some parameters and write the target density function `prob`.
+
+```{r}
+b = 0.2 # actual value of beta
+w = 0.25 # width of the uniform support set
+m = 5000 # length of the chain
+
+# generate the observed frequencies of winners
+i = sample(1:5, size = 250, replace = TRUE, 
+           prob = c(1, 1-b, 1-2*b, 2*b, b))
+win = tabulate(i)
+
+# compute the target density
+prob <- function(y, win) {
+  if (y < 0||y >= 0.5)
+    return(0)
+    return((1/3)^win[1] * ((1-y)/3)^win[2] * 
+             ((1-2*y)/3)^win[3] * ((2*y)/3)^win[4] * 
+             (y/3)^win[5])
+}
+```
+
+Since $0\le 1-2\beta \le 1$, $\beta$ is an unknown parameter with a prior distribution set to the uniform distribution on the interval (0, 0.5). Here we use four initial values and do the iteration starting with $\hat{R}=10$. We continue running the chain until $\hat{R}<1.2$.
+
+```{r}
+k = 4  #number of chains to generate
+x = as.matrix(c(0.1, 0.2, 0.3, 0.4)) # beta should be in (0, 0.5)
+
+invest.chain <- function(x) {
+  xi = numeric(nrow(x))
+  
+  for (i in 1:length(xi)) {
+    v = runif(1, -w, w) # proposal increment
+    xt = x[i, ncol(x)]
+    y = xt + v
+    ratio = prob(y, win)/prob(xt, win)
+    u = runif(1)
+    if (u <= ratio) xi[i] = y else {
+      xi[i] = xt  # y is rejected
+    }
+  }
+  return(cbind(x, xi))
+}
+
+r.hat = 10
+while(r.hat >= 1.2) {   #continuing the chain till it converges
+  x = invest.chain(x)
+  psi = t(apply(x, 1, cumsum))
+  
+  for (i in 1:nrow(psi)) {
+    psi[i, ] = psi[i, ] / (1:ncol(psi))}
+  r.hat = Gelman.Rubin(psi)
+}
+
+# When the chain converges
+conv = ncol(x)
+conv
+
+# What is the value of r.hat when it converges
+r.hat
+```
+
+The `Gelman.Rubin` function gives the G-R convergence diagnostic statistic for the MCMC chain. We notice that our chains converge at `r conv`, by the constraint $\hat{R}<1.2$.
+
+```{r, fig.align="center", fig.height=16, fig.width=12}
+# Use coda package to check convergence by the G-R method
+x.mcmc = mcmc.list(as.mcmc(x[1, ]), as.mcmc(x[2, ]),
+                   as.mcmc(x[3, ]), as.mcmc(x[4, ]))
+
+z_value = round(c(geweke.diag(x.mcmc)[[1]]$z, geweke.diag(x.mcmc)[[2]]$z,
+            geweke.diag(x.mcmc)[[3]]$z, geweke.diag(x.mcmc)[[4]]$z), 4)
+
+z_value
+```
+
+We also use `geweke.diag` function in `coda` package to verify the convergence. The test statistic is a standard Z-score: the difference between the two sample means divided by its estimated standard error. In this problem, Z-statistic values are above, all of which are greater than critical value `-1.96` and hence indicate convergence.
+
+Then we use `geweke.plot` function to create four plots.
+
+```{r}
+par(mfrow=c(2,2))
+geweke.plot(x.mcmc, auto.layout = FALSE)
+```
+
+
+
+
+
+
+
+
+

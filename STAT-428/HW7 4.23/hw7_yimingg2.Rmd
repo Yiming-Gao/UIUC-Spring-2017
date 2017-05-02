@@ -1,0 +1,131 @@
+---
+title: "STAT 428 Homework 7"
+author: 'Yiming Gao (NetID: yimingg2)'
+date: "2017/4/12"
+output:
+  pdf_document:
+    toc: yes
+linestretch: 1.2
+fontsize: 11pt
+---
+
+## Exercise 1
+
+Consider a mixture of a $N(\mu,1)$ distribution and a $N(0,1)$ distribution.
+$$f(y;\tau,\mu)=\tau(\frac{1}{\sqrt{2\pi}}e^{-(y-\mu)^2/2})+(1-\tau)(\frac{1}{\sqrt{2\pi}}e^{-y^2/2})$$
+where $\tau$ is the unknown mixing parameter and $\mu$ is the unknown mean of the first subpopulation. Write an EM algorithm to estimate the parameters $\tau$ and $\mu$.
+
+### E-step
+Let $z_i=1$ if the ith case was drawn from $N(\mu,1)$ and let $z_i=0$ if $y_i$ was drawn from $N(0,1)$. The E-step will involve finding the expected values of these given the observed data and current parameter values. The complete data likelihood can be written as
+$$L(\tau,\mu;y,z)=\prod_{i=1}^{n}(\frac{\tau}{\sqrt{2\pi}}e^{-(y_i-\mu)^2/2})^{z_i}(\frac{1-\tau}{\sqrt{2\pi}}e^{-y_i^2/2})^{1-z_i}$$
+The complete data log-likelihood is 
+$$l(\tau,\mu;y,z)=nlog(\frac{\tau}{\sqrt{2\pi}})-\frac{1}{2}\sum_{i=1}^nz_i(y_i-\mu)^2+nlog(\frac{1-\tau}{\sqrt{2\pi}})-\frac{1}{2}\sum_{i=1}^ny_i^2(1-z_i)$$
+Since $z_i=1$ if the observation is drawn from the first distribution and $z_i=0$ if $y_i$ the observation is drawn from the second distribution. The unconditional $E(Z)$ is the probability that an observation comes from the first distribution, which is $\tau$.
+
+Suppose we have n observations on Y, $y_1, ..., y_n$. Given a provisional value of $\theta=(\tau,\mu)$, we can compute the conditional expected value $E(Z|y)$ for any realization of Y. That is
+$$E(Z|y, \theta^t)=\frac{\tau^tp_1(y;\mu^t,1)}{f(y;\tau^t,\mu^t)}$$
+where $p_1(y;\mu^t,1)=\frac{1}{\sqrt{2\pi}}e^{-(y-\mu^t)^2/2}$ is the normal pdf with parameters $\mu^t$ and 1. And $f(y;\tau^t,\mu^t)$ is the mixture pdf which is given above.
+
+### M-step
+The M step is MLE of the parameters:
+$$\tau^{t+1}=\frac{1}{n}\sum E(Z|y_i, \theta^t)$$
+$$\mu^{t+1}=\frac{1}{n\tau^{t+1}}\sum E(Z|y_i, \theta^t)y_i$$
+
+Let's generate some artificial data and try it out. We generate data from normal mixture with $\tau=0.6,\mu=1$.
+
+```{r}
+set.seed(48)
+n = 500
+# true value
+tau = 0.6
+mu = 1
+y = ifelse(runif(n) < tau, rnorm(n, mu, 1), rnorm(n, 0, 1))
+```
+
+We will iterate 100 times.
+
+```{r}
+# Initialize
+tau0 = 0.5
+mu0 = 0.5
+
+# create vectors to save parameters at all iterations
+tauvals = rep(tau0, 100)
+muvals = rep(mu0, 100)
+
+# do 39 iterations of EM
+for (i in 1:99) {
+  # E step
+  tmp = tauvals[i]*dnorm(y, muvals[i], 1)/(tauvals[i]*dnorm(y, muvals[i], 1)
+                                           +(1-tauvals[i])*dnorm(y, 0, 1))
+  
+  # M step
+  tauvals[i+1] = mean(tmp)
+  muvals[i+1] = sum(tmp*y)/(n*tauvals[i+1])
+}
+```
+
+We print out our last 30 estimates for two parameters.
+
+```{r}
+print(tauvals[71:100])
+print(muvals[71:100])
+```
+
+From the result, we can find out the estimates for $(\tau,\mu)$ is $(0.5998, 0.9553)$, which is very close to the true value (0.6, 1).
+
+
+## Exercise 2
+
+Generate a dataset with $\tau = 0.5,\mu=1$ and $n=100$. I've already simulated the data for illustration in exercise 1. Similarly, let's verify it again. Here we set the initial values for $(\tau_0,\mu_0)$ is $(0.2, 0.5)$ and do 200 iterations.
+
+```{r}
+set.seed(48)
+n = 100
+# true value
+tau = 0.5
+mu = 1
+y = ifelse(runif(n) < tau, rnorm(n, mu, 1), rnorm(n, 0, 1))
+
+# Initialize
+tau0 = 0.2
+mu0 = 0.5
+
+# create vectors to save parameters at all iterations
+tauvals = rep(tau0, 200)
+muvals = rep(mu0, 200)
+
+# do 199 iterations of EM
+for (i in 1:199) {
+  # E step
+  tmp = tauvals[i]*dnorm(y, muvals[i], 1)/(tauvals[i]*dnorm(y, muvals[i], 1)
+                                           +(1-tauvals[i])*dnorm(y, 0, 1))
+  
+  # M step
+  tauvals[i+1] = mean(tmp)
+  muvals[i+1] = sum(tmp*y)/(n*tauvals[i+1])
+}
+```
+
+Let's print out the last 50 values to see if the estimates converge.
+
+```{r}
+print(tauvals[151: 200])
+print(muvals[151 :200])
+```
+
+This converges very quickly to $(0.504, 0.972)$ after 200 iterations, which are close to our true parameter values.
+
+Then we can visualize how the process happens.
+
+```{r, echo=FALSE, fig.align="center", fig.width=10}
+par(mfrow = c(1, 2))
+plot(tauvals, pch = 16, cex = 0.5, ylab = expression(tau), xlab = "Iteration")
+abline(h = 0.5, col = "dodgerblue2", lwd = 2)
+grid()
+plot(muvals, pch = 16, cex = 0.5, ylab = expression(mu), xlab = "Iteration")
+abline(h = 1, col = "dodgerblue2", lwd = 2)
+grid()
+title(main = "Convergence of Parameter Estimates", outer = TRUE, line = -1)
+```
+
