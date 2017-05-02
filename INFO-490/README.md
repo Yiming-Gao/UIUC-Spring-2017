@@ -1,5 +1,7 @@
 # Welcome to INFO 490: Advanced Data Science #
 
+Website: https://github.com/lcdm-uiuc/info490-sp17
+
 ***Professor:*** Dr. Robert J. Brunner
 
 ***Course Administrator:*** Edward J. Kim
