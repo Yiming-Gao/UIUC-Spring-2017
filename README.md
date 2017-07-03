@@ -1,2 +1,2 @@
 # UIUC-Spring-2017
-Course contents
+This contains course contents and assignments.
