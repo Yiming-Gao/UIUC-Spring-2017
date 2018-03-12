@@ -299,7 +299,6 @@ shinyServer(function(input, output) {
   },height = 400)
   
   
-  
   output$rmse <- renderText({
     house.reg <- read.csv("kc_house_data.csv")
     
